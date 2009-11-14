@@ -18,6 +18,8 @@ int main()
   CHECK(worker(NULL, NULL) == 0, worker_err, "Worker function failed!\n");
   exit(EXIT_SUCCESS);
 
-  worker_err: master_err: exit(EXIT_FAILURE);
+worker_err:
+master_err:
+  exit(EXIT_FAILURE);
 }
 
