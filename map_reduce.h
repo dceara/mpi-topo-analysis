@@ -16,7 +16,8 @@ typedef struct generic_key_value MK;
 
 typedef struct generic_key_value MV;
 
-struct generic_key_value {
+struct generic_key_value
+{
   unsigned int size;
   void* data;
 };
@@ -25,14 +26,16 @@ typedef struct RListNode* RList;
 
 typedef struct reduce_list_node RListNode;
 
-struct reduce_list_node {
+struct reduce_list_node
+{
   MV val;
   RListNode* next;
 };
 
 typedef struct input_pair IPair;
 
-struct input_pair {
+struct input_pair
+{
   IK key;
   IV val;
 };
@@ -41,13 +44,15 @@ typedef struct MListNode* MList;
 
 typedef struct map_list_node MListNode;
 
-struct map_list_node {
+struct map_list_node
+{
   MK key;
   MV val;
   MListNode* next;
 };
 
-typedef int (*input_reader_ptr)(const char* filename, int worker_count, IPair* result);
+typedef int (*input_reader_ptr)(const char* filename, int worker_count,
+    IPair* result);
 
 typedef int (*map_ptr)(IK input_key, IV input_value, MList* result);
 

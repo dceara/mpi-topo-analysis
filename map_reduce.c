@@ -18,4 +18,3 @@ int worker(map_ptr map, reduce_ptr reduce)
   NOT_IMPLEMENTED("worker");
 }
 
-
