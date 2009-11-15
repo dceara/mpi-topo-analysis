@@ -14,42 +14,49 @@
 #include "utils.h"
 #include "network.h"
 
-inline int scatter(int root, void* sendbuf, int* sendcounts, void* recvbuf,
+inline int scatter(int root, void* sendbuf, int size,
+    void* recvbuf, int recvcount)
+{
+  CHECK(MPI_Scatter(sendbuf, size, MPI_BYTE, recvbuf, recvcount, MPI_BYTE,
+          root, MPI_COMM_WORLD) == MPI_SUCCESS,
+      scatter_err, "scatter: Error when calling MPI_Scatter.\n");
+  return 0;
+
+  scatter_err: return 1;
+}
+
+inline int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
     int recvcount, int groupsize)
 {
   int* displ;
 
   CHECK((displ = calloc(groupsize, sizeof(*displ))) != NULL, alloc_err,
-      "scatter: Out of memory!\n");
+      "scatterv: Out of memory!\n");
   CHECK(MPI_Scatterv(sendbuf, sendcounts, displ, MPI_BYTE,
           recvbuf, recvcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
-      scatter_err, "scatter: Error when calling MPI_Scatterv.\n");
+      scatter_err, "scatterv: Error when calling MPI_Scatterv.\n");
   free(displ);
   return 0;
 
-scatter_err:
-  free(displ);
-alloc_err:
-  return 1;
+  scatter_err: free(displ);
+  alloc_err: return 1;
 }
 
-inline int gather(int root, void* sendbuf, int sendcount, void* recvbuf,
+inline int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
     int* recvcounts, int groupsize)
 {
   int* displ;
 
   CHECK((displ = calloc(groupsize, sizeof(*displ))) != NULL, alloc_err,
-      "gather: Out of memory!\n");
+      "gatherv: Out of memory!\n");
   CHECK(MPI_Gatherv(sendbuf, sendcount, MPI_BYTE, recvbuf,
           recvcounts, displ, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
-      gather_err, "gather: Error when calling MPI_Gatherv.\n")
+      gather_err, "gatherv: Error when calling MPI_Gatherv.\n")
   free(displ);
   return 0;
 
-gather_err:
-  free(displ);
-alloc_err:
-  return 1;
+  gather_err: free(displ);
+  alloc_err: return 1;
 }
 
 inline int broadcast(int root, void* sendbuf, int sendcount)
@@ -58,6 +65,5 @@ inline int broadcast(int root, void* sendbuf, int sendcount)
       bcast_err, "broadcast: Error when calling MPI_Bcast.\n");
   return 0;
 
-bcast_err:
-  return 1;
+  bcast_err: return 1;
 }
