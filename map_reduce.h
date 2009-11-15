@@ -24,17 +24,7 @@ struct generic_key_value
   void* data;
 };
 
-typedef struct RListNode* RList;
-
-typedef struct reduce_list_node RListNode;
-
-struct reduce_list_node
-{
-  MV val;
-  RListNode* next;
-};
-
-typedef struct input_pair IPair;
+typedef struct input_pair InputPair;
 
 struct input_pair
 {
@@ -42,30 +32,77 @@ struct input_pair
   IV val;
 };
 
-typedef struct MListNode* MList;
+typedef struct map_pair MapPair;
 
-typedef struct map_list_node MListNode;
-
-struct map_list_node
+struct map_pair
 {
   MK key;
   MV val;
-  MListNode* next;
 };
 
-typedef int (*input_reader_ptr)(const char* filename, int worker_count, IPair* result);
-typedef int (*map_ptr)(IK input_key, IV input_value, MList* result);
-typedef int (*reduce_ptr)(MK map_key, RList map_values, RList* result);
+typedef struct map_pair_array MapArray;
+
+struct map_pair_array
+{
+  MapPair* map_pair_array;
+  unsigned int size;
+};
+
+typedef struct map_value_array MapValueArray;
+
+struct map_value_array
+{
+  MV* map_val_array;
+  unsigned int size;
+};
+
+/*
+ * The input reader should return a new pair (input_key, input_value) at subsequent calls.
+ * Returns 0 on a successful read, 1 otherwise.
+ */
+typedef int (*input_reader_ptr)(const char* filename, int worker_count, InputPair* result);
+
+/*
+ * Returns the size of the serialized key.
+ */
+typedef int (*input_key_size_ptr)(IK* key);
+
+/*
+ * Returns the size of the serialized value.
+ */
+typedef int (*input_value_size_ptr)(IV* val);
+
+/*
+ * Serializes the input pair into ptr.
+ */
+typedef void (*input_serialize_ptr)(InputPair* p, char* ptr);
+
+/*
+ * Takes an input_key and an input_value and returns a list of map (key, value) pairs.
+ * Returns 0 on success, 1 otherwise.
+ */
+typedef int (*map_ptr)(InputPair* input_pair, MapArray* result);
+
+/*
+ * Takes a map_key and a list of map_values and reduces the result.
+ * Returns 0 on success, 1 otherwise.
+ */
+typedef int (*reduce_ptr)(MK* map_key, MapArray* map_values, MapArray* result);
 
 typedef struct map_reduce MapReduce;
 
 struct map_reduce
 {
   input_reader_ptr input_reader;
+  input_key_size_ptr input_key_size;
+  input_value_size_ptr input_value_size;
+  input_serialize_ptr input_serialize;
+
   map_ptr map;
   reduce_ptr reduce;
   int proc_count;
   int rank;
+  const char* input_filename;
 };
 
 /*
@@ -74,8 +111,10 @@ struct map_reduce
  * function. Also, pointers to the application command line arguments must be supplied.
  * Returns the application on success, NULL otherwise.
  */
-MapReduce* create_map_reduce_app(input_reader_ptr input_reader, map_ptr map,
-    reduce_ptr reduce,int* argcp, char*** argvp);
+MapReduce* create_map_reduce_app(input_reader_ptr input_reader,
+    input_key_size_ptr input_key_size, input_value_size_ptr input_value_size,
+    input_serialize_ptr input_serialize, map_ptr map, reduce_ptr reduce,
+    int* argcp, char*** argvp, const char* input_filename);
 
 /*
  * Destroys an existing map/reduce application.

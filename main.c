@@ -11,30 +11,50 @@
 #include "utils.h"
 
 /* TODO: Change mock input reader function! */
-int input_reader(const char* filename, int worker_count, IPair* result)
+int input_reader(const char* filename, int worker_count, InputPair* result)
+{
+  PRINT("input_reader called.\n");
+  return 1;
+}
+
+/* TODO: Change mock input reader function! */
+int input_key_size(IK* key)
 {
   return 0;
 }
 
 /* TODO: Change mock input reader function! */
-int map(IK input_key, IV input_value, MList* result)
+int input_value_size(IV* val)
 {
   return 0;
 }
 
 /* TODO: Change mock input reader function! */
-int reduce(MK map_key, RList map_values, RList* result)
+void input_serialize(InputPair* p, char* ptr)
+{
+
+}
+
+/* TODO: Change mock input reader function! */
+int map(InputPair* input_pair, MapArray* result)
 {
   return 0;
 }
 
+/* TODO: Change mock input reader function! */
+int reduce(MK* map_key, MapArray* map_values, MapArray* result)
+{
+  return 0;
+}
 
 int main(int argc, char** argv)
 {
   MapReduce* app;
 
   PRINT("Creating map reduce application... \n");
-  CHECK((app = create_map_reduce_app(input_reader, map, reduce, &argc, &argv)) != NULL, app_err,
+  CHECK((app = create_map_reduce_app(input_reader, input_key_size,
+              input_value_size, input_serialize, map, reduce,
+              &argc, &argv, "test.txt")) != NULL, app_err,
       "Unable to create map reduce application\n");
 
   if (is_master(app)) {
@@ -48,11 +68,7 @@ int main(int argc, char** argv)
   destroy_map_reduce_app(app);
   exit(EXIT_SUCCESS);
 
-
-worker_err:
-master_err:
-  destroy_map_reduce_app(app);
-app_err:
-  exit(EXIT_FAILURE);
+  worker_err: master_err: destroy_map_reduce_app(app);
+  app_err: exit(EXIT_FAILURE);
 }
 

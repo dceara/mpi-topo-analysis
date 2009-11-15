@@ -35,6 +35,19 @@ int get_network_rank(int* rank);
 int finalize_network();
 
 /*
+ * A wrapper for the MPI_Scatter function.
+ * root - the rank of the sending task
+ * sendbuf - the buffer to scatter (only significant at root)
+ * size - the size of the data scattered to one node
+ * recvbuf - the address of the receiving buffer
+ * recvcount - the size of the receiving buffer
+ * Returns 0 on success, 1 otherwise.
+ *
+ * The function implementation is dependent on the virtual topology being used.
+ */
+int scatter(int root, void* sendbuf, int size, void* recvbuf, int recvcount);
+
+/*
  * A wrapper for the MPI_Scatterv function.
  * root - the rank of the sending task
  * sendbuf - the buffer to scatter (only significant at root)
@@ -45,7 +58,7 @@ int finalize_network();
  *
  * The function implementation is dependent on the virtual topology being used.
  */
-int scatter(int root, void* sendbuf, int* sendcounts, void* recvbuf, int recvcount, int groupsize);
+int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf, int recvcount, int groupsize);
 
 /*
  * A wrapper for the MPI_Gatherv function.
@@ -58,7 +71,7 @@ int scatter(int root, void* sendbuf, int* sendcounts, void* recvbuf, int recvcou
  *
  * The function implementation is dependent on the virtual topology being used.
  */
-int gather(int root, void* sendbuf, int sendcount, void* recvbuf, int* recvcounts, int groupsize);
+int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf, int* recvcounts, int groupsize);
 
 /*
  * A wrapper for the MPI_Bcast function.
