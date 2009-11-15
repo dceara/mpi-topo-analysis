@@ -15,5 +15,5 @@ map_reduce.o: map_reduce.c map_reduce.h utils.h
 main.o: main.c map_reduce.h utils.h
 
 clean:
-	rm -f main
+	rm -f default
 	rm -f *.o
