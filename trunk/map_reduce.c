@@ -186,9 +186,10 @@ int master(MapReduce* app)
           "master: Unable to broadcast FINISHED_MAP_TASK to workers.\n");
       break;
     }
+    //TODO: wait for response for map operation!
   }
 
-  //NOT_IMPLEMENTED("master");
+  NOT_IMPLEMENTED("master");
   return 0;
 
   bcast_err: param_err: return 1;
@@ -197,7 +198,7 @@ int master(MapReduce* app)
 int worker(MapReduce* app)
 {
   CHECK(app != NULL, param_err, "worker: Invalid application parameter!\n");
-  //NOT_IMPLEMENTED("worker");
+  NOT_IMPLEMENTED("worker");
   return 0;
 
   param_err: return 1;
