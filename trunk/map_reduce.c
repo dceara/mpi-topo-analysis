@@ -5,8 +5,6 @@
  *      Author: take
  */
 
-#include <mpi.h>
-
 #include <stdlib.h>
 #include <strings.h>
 #include "map_reduce.h"

@@ -61,7 +61,7 @@ inline int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
 
 inline int broadcast(int root, void* sendbuf, int sendcount)
 {
-  CHECK(MPI_Bcast(sendbuf, sendcount, MPI_BYTE, root, MPI_COMM_WORLD),
+  CHECK(MPI_Bcast(sendbuf, sendcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
       bcast_err, "broadcast: Error when calling MPI_Bcast.\n");
   return 0;
 
