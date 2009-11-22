@@ -47,13 +47,25 @@ int reduce(MK* map_key, MapArray* map_values, MapArray* result)
   return 0;
 }
 
+static MRInputHandlers ihandlers = {
+    input_reader,
+    input_key_size,
+    input_value_size,
+    input_serialize
+};
+static MRMapHandlers mhandlers = {
+    map
+};
+static MRReduceHandlers rhandlers = {
+    reduce
+};
+
 int main(int argc, char** argv)
 {
   MapReduce* app;
 
   PRINT("Creating map reduce application... \n");
-  CHECK((app = create_map_reduce_app(input_reader, input_key_size,
-              input_value_size, input_serialize, map, reduce,
+  CHECK((app = create_map_reduce_app(&ihandlers, &mhandlers, &rhandlers,
               &argc, &argv, "test.txt")) != NULL, app_err,
       "Unable to create map reduce application\n");
 

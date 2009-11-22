@@ -14,8 +14,7 @@
 #include "utils.h"
 #include "network.h"
 
-inline int scatter(int root, void* sendbuf, int size,
-    void* recvbuf, int recvcount)
+int scatter(int root, void* sendbuf, int size, void* recvbuf, int recvcount)
 {
   CHECK(MPI_Scatter(sendbuf, size, MPI_BYTE, recvbuf, recvcount, MPI_BYTE,
           root, MPI_COMM_WORLD) == MPI_SUCCESS,
@@ -25,7 +24,7 @@ inline int scatter(int root, void* sendbuf, int size,
   scatter_err: return 1;
 }
 
-inline int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
+int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
     int recvcount, int groupsize)
 {
   int* displ;
@@ -42,7 +41,17 @@ inline int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
   alloc_err: return 1;
 }
 
-inline int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
+int gather(int root, void* sendbuf, int sendcount, void* recvbuf, int recvcount)
+{
+  CHECK(MPI_Gather(sendbuf, sendcount, MPI_BYTE,
+          recvbuf, recvcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
+      gather_err, "gather: Error when calling MPI_Gather.\n");
+  return 0;
+
+  gather_err: return 1;
+}
+
+int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
     int* recvcounts, int groupsize)
 {
   int* displ;

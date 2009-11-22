@@ -10,18 +10,71 @@
 
 #define MASTER_RANK 0
 
-typedef struct generic_key_value IK;
+/*
+ * Each application must define its own:
+ *  INPUT_KEY_MAX_SIZE
+ *  INPUT_VALUE_MAX_SIZE
+ *  MAP_KEY_MAX_SIZE
+ *  MAP_VALUE_MAX_SIZE
+ */
+#define APPLICATION 1
+#if APPLICATION == 1
 
-typedef struct generic_key_value IV;
+#define INPUT_KEY_MAX_SIZE 512
+/* 1MB input chunks */
+#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
+/* 512 bytes words */
+#define MAP_KEY_MAX_SIZE 512
+/* The map value is a counter. */
+#define MAP_VALUE_MAX_SIZE sizeof(int)
+#endif
 
-typedef struct generic_key_value MK;
+#ifndef INPUT_KEY_MAX_SIZE
+#error INPUT_KEY_MAX_SIZE missing
+#endif
 
-typedef struct generic_key_value MV;
+#ifndef INPUT_VALUE_MAX_SIZE
+#error INPUT_VALUE_MAX_SIZE missing
+#endif
 
-struct generic_key_value
+#ifndef MAP_KEY_MAX_SIZE
+#error MAP_KEY_MAX_SIZE missing
+#endif
+
+#ifndef MAP_VALUE_MAX_SIZE
+#error MAP_VALUE_MAX_SIZE missing
+#endif
+
+typedef struct input_key IK;
+
+struct input_key
 {
   unsigned int size;
-  void* data;
+  char data[INPUT_KEY_MAX_SIZE];
+};
+
+typedef struct input_value IV;
+
+struct input_value
+{
+  unsigned int size;
+  char data[INPUT_VALUE_MAX_SIZE];
+};
+
+typedef struct map_key MK;
+
+struct map_key
+{
+  unsigned int size;
+  char data[MAP_KEY_MAX_SIZE];
+};
+
+typedef struct map_value MV;
+
+struct map_value
+{
+  unsigned int size;
+  char data[MAP_VALUE_MAX_SIZE];
 };
 
 typedef struct input_pair InputPair;
@@ -40,69 +93,63 @@ struct map_pair
   MV val;
 };
 
-typedef struct map_pair_array MapArray;
+/*
+ * A mapping between map key and the worker that computed it.
+ */
+typedef struct map_key_worker_pair MapKeyWorkerPair;
 
-struct map_pair_array
+struct map_key_worker_pair
 {
-  MapPair* map_pair_array;
-  unsigned int size;
-};
-
-typedef struct map_value_array MapValueArray;
-
-struct map_value_array
-{
-  MV* map_val_array;
-  unsigned int size;
+  MK key;
+  int worker;
 };
 
 /*
- * The input reader should return a new pair (input_key, input_value) at subsequent calls.
- * Returns 0 on a successful read, 1 otherwise.
+ * The master uses it to store the mappings between map keys and the workers
+ * that computed them.
  */
-typedef int (*input_reader_ptr)(const char* filename, int worker_count, InputPair* result);
+typedef struct map_key_worker_pair_array MapKeyWorkerPairArray;
+
+struct map_key_worker_pair_array
+{
+  MapKeyWorkerPair* array;
+  unsigned int size;
+};
 
 /*
- * Returns the size of the serialized key.
+ * The input reader stores at most 'worker_count' tasks at the address pointed to by 'result'.
+ * Returns the number of stored tasks on SUCCESS, -1 otherwise.
  */
-typedef int (*input_key_size_ptr)(IK* key);
+typedef int (*input_reader_ptr)(const char* filename, int worker_count,
+    InputPair* result);
 
 /*
- * Returns the size of the serialized value.
+ * Takes an input_key and an input_value and returns an array of map (key, value) pairs.
+ * Returns NULL on error.
  */
-typedef int (*input_value_size_ptr)(IV* val);
-
-/*
- * Serializes the input pair into ptr.
- */
-typedef void (*input_serialize_ptr)(InputPair* p, char* ptr);
-
-/*
- * Takes an input_key and an input_value and returns a list of map (key, value) pairs.
- * Returns 0 on success, 1 otherwise.
- */
-typedef int (*map_ptr)(InputPair* input_pair, MapArray* result);
+typedef MapPair* (*map_ptr)(InputPair* input_pair);
 
 /*
  * Takes a map_key and a list of map_values and reduces the result.
- * Returns 0 on success, 1 otherwise.
+ * Returns a list of map values on success, NULL otherwise.
  */
-typedef int (*reduce_ptr)(MK* map_key, MapArray* map_values, MapArray* result);
+typedef MV* (*reduce_ptr)(MK* map_key, MV* map_values);
 
 typedef struct map_reduce MapReduce;
 
 struct map_reduce
 {
   input_reader_ptr input_reader;
-  input_key_size_ptr input_key_size;
-  input_value_size_ptr input_value_size;
-  input_serialize_ptr input_serialize;
 
   map_ptr map;
+
   reduce_ptr reduce;
+
   int proc_count;
   int rank;
   const char* input_filename;
+
+  MapKeyWorkerPairArray map_key_worker_mappings;
 };
 
 /*
@@ -112,10 +159,8 @@ struct map_reduce
  * Returns the application on success, NULL otherwise.
  */
 MapReduce* create_map_reduce_app(input_reader_ptr input_reader,
-    input_key_size_ptr input_key_size, input_value_size_ptr input_value_size,
-    input_serialize_ptr input_serialize, map_ptr map, reduce_ptr reduce,
-    int* argcp, char*** argvp, const char* input_filename);
-
+    map_ptr map, reduce_ptr reduce, int* argcp,
+    char*** argvp, const char* input_filename);
 /*
  * Destroys an existing map/reduce application.
  */
