@@ -61,6 +61,19 @@ int scatter(int root, void* sendbuf, int size, void* recvbuf, int recvcount);
 int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf, int recvcount, int groupsize);
 
 /*
+ * A wrapper for the MPI_Gather function.
+ * root - the rank of the receiving task
+ * sendbuf - the sending buffer
+ * sendcount - the size of the data being sent
+ * recvbuf - the address the buffer where the data is received (only significant at root)
+ * recvcount - number of elements for any single receive
+ * Returns 0 on success, 1 otherwise.
+ *
+ * The function implementation is dependent on the virtual topology being used.
+ */
+int gather(int root, void* sendbuf, int sendcount, void* recvbuf, int recvcount);
+
+/*
  * A wrapper for the MPI_Gatherv function.
  * root - the rank of the receiving task
  * sendbuf - the sending buffer
