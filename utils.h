@@ -46,4 +46,11 @@
     goto lbl; \
   }
 
+#define BUG(format, ...) \
+  do { \
+    ERR(format, ##__VA_ARGS__); \
+    assert(0); \
+  } while(0)
+
+
 #endif /* UTILS_H_ */
