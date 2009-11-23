@@ -116,6 +116,16 @@ struct map_key_worker_pair_array
   unsigned int size;
 };
 
+typedef struct map_key_value_pair_array MapKeyValuePairArray;
+
+struct map_key_value_pair_array
+{
+  MapPair* array;
+  unsigned int size;
+};
+
+typedef int (*map_key_compare_ptr)(const MK* first, const MK* second);
+
 /*
  * The input reader stores at most 'worker_count' tasks at the address pointed to by 'result'.
  * Returns the number of stored tasks on SUCCESS, -1 otherwise.
@@ -124,16 +134,17 @@ typedef int (*input_reader_ptr)(const char* filename, int worker_count,
     InputPair* result);
 
 /*
- * Takes an input_key and an input_value and returns an array of map (key, value) pairs.
+ * Takes an input_key and an input_value, returns an array of map (key, value) pairs and
+ * stores the size of the result in 'results_cnt'
  * Returns NULL on error.
  */
-typedef MapPair* (*map_ptr)(InputPair* input_pair);
+typedef MapPair* (*map_ptr)(InputPair* input_pair, int* results_cnt);
 
 /*
  * Takes a map_key and a list of map_values and reduces the result.
  * Returns a list of map values on success, NULL otherwise.
  */
-typedef MV* (*reduce_ptr)(MK* map_key, MV* map_values);
+typedef MV* (*reduce_ptr)(MapPair* reduce_values);
 
 typedef struct map_reduce MapReduce;
 
@@ -145,11 +156,15 @@ struct map_reduce
 
   reduce_ptr reduce;
 
+  map_key_compare_ptr map_key_compare;
+
   int proc_count;
   int rank;
   const char* input_filename;
 
   MapKeyWorkerPairArray map_key_worker_mappings;
+  MapKeyValuePairArray map_key_value_mappings;
+  MapKeyValuePairArray reduce_key_value_mappings;
 };
 
 /*
@@ -159,7 +174,7 @@ struct map_reduce
  * Returns the application on success, NULL otherwise.
  */
 MapReduce* create_map_reduce_app(input_reader_ptr input_reader,
-    map_ptr map, reduce_ptr reduce, int* argcp,
+    map_ptr map, map_key_compare_ptr map_key_compare, reduce_ptr reduce, int* argcp,
     char*** argvp, const char* input_filename);
 /*
  * Destroys an existing map/reduce application.
