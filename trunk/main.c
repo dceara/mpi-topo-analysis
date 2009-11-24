@@ -13,8 +13,14 @@
 /* TODO: Change mock input reader function! */
 int input_reader(const char* filename, int worker_count, InputPair* result)
 {
+  static int called = 0;
+  if (!called) {
+    PRINT("input_reader called the first time.\n");
+    called = 1;
+    return 1;
+  }
   PRINT("input_reader called.\n");
-  return 1;
+  return 0;
 }
 
 /* TODO: Change mock input reader function! */

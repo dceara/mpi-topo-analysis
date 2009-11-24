@@ -101,6 +101,13 @@ static inline int distribute_map_tasks(MapReduce* app)
 
     CHECK(available_cnt != -1, input_err, "distribute_map_tasks: Unable to read input tasks.\n");
 
+    DBG_PRINT("rank: %d: Called input_reader. Received %d tasks.\n", app->rank, available_cnt);
+
+    if (available_cnt == 0) {
+      DBG_PRINT("rank: %d: No more map tasks to send.\n", app->rank);
+      break;
+    }
+
     /* Initialize sizes for each worker. sizes[i] = 1 if worker gets task, 0 otherwise.*/
     sizes[0] = 0;
     for (i = 0; i < available_cnt; ++i)
@@ -109,23 +116,30 @@ static inline int distribute_map_tasks(MapReduce* app)
       sizes[i] = 0;
 
     /* Inform the workers that we have Map tasks for them. */
+    DBG_PRINT("rank: %d: Inform the workers that we have tasks for them.\n", app->rank);
     CHECK(broadcast(app->rank, SEND_MAP_TASK, sizeof(SEND_MAP_TASK)) == 0,
         bcast_err, "distribute_map_tasks: Unable to broadcast input tasks signal.\n");
 
     /* Announce workers whether they have available tasks or not. */
+    DBG_PRINT("rank: %d: Send the sizes of the tasks to the workers.\n", app->rank);
     CHECK(scatter(app->rank, sizes, sizeof(*sizes), buf, sizeof(*sizes)) == 0,
         scatter_err, "distribute_map_tasks: Unable to scatter tasks sizes.\n");
 
     /* Send tasks to the workers. */
-    CHECK(scatterv(app->rank, tasks, sizes, NULL, 0, app->proc_count),
+    DBG_PRINT("rank: %d: Send the actual tasks to the workers.\n", app->rank);
+    CHECK(scatterv(app->rank, tasks, sizes, NULL, 0, app->proc_count) == 0,
         scatter_err, "distribute_map_tasks: Unable to scatter tasks.\n");
 
     /* Receive number of result keys from each worker. */
+    DBG_PRINT("rank: %d: Receive the number of result keys from each worker.\n", app->rank);
     CHECK(gather(app->rank, buf, sizeof(*sizes), sizes, sizeof(*sizes)) == 0,
         gather_err, "distribute_map_tasks: Unable to gather number of result keys.\n");
 
-    for (i = 0; i < app->proc_count; ++i)
+    for (i = 0; i < app->proc_count; ++i) {
       total_map_mappings_cnt += sizes[i] / sizeof(MapKeyWorkerPair);
+      DBG_PRINT("rank: %d: worker %d will send %d keys.\n", app->rank,
+          i, sizes[i] / sizeof(MapKeyWorkerPair));
+    }
 
     /* Increase the storing space in the global array for the new map keys. */
     CHECK((app->map_key_worker_mappings.array = realloc(app->map_key_worker_mappings.array,
@@ -134,16 +148,21 @@ static inline int distribute_map_tasks(MapReduce* app)
     app->map_key_worker_mappings.size += total_map_mappings_cnt;
 
     /* Receive the map keys from the workers and store them in the global array. */
+    DBG_PRINT("rank: %d: receiving the map keys from the workers and storing" \
+        " them in the global array\n", app->rank);
     CHECK(gatherv(app->rank, NULL, 0,
             app->map_key_worker_mappings.array + old_mappings_cnt, sizes, app->proc_count) == 0,
         gatherv_err, "distribute_map_tasks: Unable to receive key/worker pairs.\n");
 
     /* If we have no more tasks, finish distributing them. */
-    if (available_cnt < app->proc_count - 1)
+    if (available_cnt < app->proc_count - 1) {
+      DBG_PRINT("rank: %d: No more map tasks to send.\n", app->rank);
       break;
+    }
   }
 
   /* No more tasks. Announce workers.*/
+  DBG_PRINT("rank: %d: Announcing workers that we have no more map tasks.\n", app->rank);
   CHECK(broadcast(app->rank, FINISHED_MAP_TASK, 1) == 0, bcast_err,
       "master: Unable to broadcast FINISHED_MAP_TASK to workers.\n");
 
@@ -201,10 +220,14 @@ int master(MapReduce* app)
   CHECK(app->proc_count > 1, param_err,
       "master: Unable to start map/reduce without any workers!\n");
 
+  DBG_PRINT("rank: %d: Distributing map tasks.\n", app->rank);
   CHECK(distribute_map_tasks(app) == 0, distrib_err, "master: Unable to distribute map tasks.\n")
+
+  DBG_PRINT("rank: %d: Broadcasting key/worker mappings.\n", app->rank);
   CHECK(broadcast_key_worker_mappings(app) == 0, bcast_kw_err,
       "master: Unable to broadcast key/worker mappings.\n");
 
+  DBG_PRINT("rank: %d: Master simulating scatter.\n", app->rank);
   CHECK(workers_scatter(app) == 0, scatter_err, "master: Unable to scatter with workers.\n");
   // TODO: maybe wait for results here. If not, then the master can finish.
   return 0;
@@ -218,16 +241,18 @@ static inline int perform_map_task(MapReduce* app)
   int task_size;
   InputPair task;
   MapPair* map_results;
-  int map_results_cnt;
+  int map_results_cnt = 0;
   MapKeyWorkerPair* key_worker_array = NULL;
 
   /* Check if the master has a task available for the worker. */
+  DBG_PRINT("rank: %d: Checking if the master has a task available for me.\n", app->rank);
   CHECK(scatter(MASTER_RANK, NULL, 0, &task_available, sizeof(task_available)) == 0,
       avail_err, "perform_map_task: Unable to receive task_available from master.\n");
 
   task_size = task_available ? sizeof(task) : 0;
 
   /* Get the task from the master if available. */
+  DBG_PRINT("rank: %d: Getting the task from the master. Task size: %d\n", app->rank, task_size);
   CHECK(scatterv(MASTER_RANK, NULL, NULL, &task, task_size, app->proc_count) == 0,
       rec_task_err, "perform_map_task: Unable to receive task from master.\n");
 
@@ -268,8 +293,11 @@ static inline int perform_map_task(MapReduce* app)
     free(key_worker_array);
     free(map_results);
   } else {
-    CHECK(gather(MASTER_RANK, NULL, 0, NULL, 0) == 0,
+    DBG_PRINT("rank: %d: Sending size 0 as a result to mock map task.\n", app->rank);
+    CHECK(gather(MASTER_RANK, &map_results_cnt, sizeof(map_results_cnt), NULL, 0) == 0,
         gather_err, "perform_map_task: Unable to send 0 as number of result keys to the master.\n");
+
+    DBG_PRINT("rank: %d: Sending empty result to mock map task.\n", app->rank);
     CHECK(gatherv(MASTER_RANK, NULL, 0, NULL, 0, app->proc_count) == 0,
         gatherv_err, "perform_map_task: Unable to send empty key_worker array to the master.\n")
   }
@@ -288,18 +316,19 @@ static inline int receive_map_tasks(MapReduce* app)
   for (;;) {
     int finished = 0;
 
+    DBG_PRINT("rank: %d: Receiving broadcast signal from master.\n", app->rank);
     CHECK(broadcast(MASTER_RANK, signal, sizeof(signal)) == 0,
         signal_err, "receive_map_tasks: Unable to receive signal from master.\n");
     switch (signal[0])
     {
     case FINISHED_MAP:
-      PRINT("Worker %d: Finished performing map tasks.\n", app->rank);
+      DBG_PRINT("rank: %d: Finished performing map tasks.\n", app->rank);
       finished = 1;
       break;
     case MAP_TASK:
+      DBG_PRINT("rank: %d: Received a map task from the master.\n", app->rank);
       CHECK(perform_map_task(app) == 0,
-          map_err, "receive_map_tasks: Unable to perform map task.\n")
-      ;
+          map_err, "receive_map_tasks: Unable to perform map task.\n");
       break;
     default:
       ERR("Worker %d: Received unknown signal from master: %c\n", app->rank, signal[0]);
@@ -470,9 +499,17 @@ static inline int perform_reduce(MapReduce* app)
 int worker(MapReduce* app)
 {
   CHECK(app != NULL, err, "worker: Invalid application parameter!\n");
+
+  DBG_PRINT("rank: %d: Receiving map tasks from master.\n", app->rank);
   CHECK(receive_map_tasks(app) == 0, err, "worker: Unable to receive map operations.\n");
+
+  DBG_PRINT("rank: %d: Receiving key/worker mappings from master.\n", app->rank);
   CHECK(receive_key_worker_mappings(app) == 0, err, "worker: Unable to receive key worker mappings.\n");
+
+  DBG_PRINT("rank: %d: Sending reduce data to other workers.\n", app->rank);
   CHECK(send_reduce_data(app) == 0, err, "worker: Unable to send reduce data.\n");
+
+  DBG_PRINT("rank: %d: Performing reduce locally.\n", app->rank);
   CHECK(perform_reduce(app) == 0, err, "worker: Unable to perform reduce.\n");
   return 0;
 
