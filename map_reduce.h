@@ -141,10 +141,10 @@ typedef int (*input_reader_ptr)(const char* filename, int worker_count,
 typedef MapPair* (*map_ptr)(InputPair* input_pair, int* results_cnt);
 
 /*
- * Takes a map_key and a list of map_values and reduces the result.
+ * Takes a map_key and a list of all map_key/value pairs and reduces the requested key.
  * Returns a list of map values on success, NULL otherwise.
  */
-typedef MV* (*reduce_ptr)(MapPair* reduce_values);
+typedef MV* (*reduce_ptr)(MK* key_to_reduce, MapPair* all_values);
 
 typedef struct map_reduce MapReduce;
 

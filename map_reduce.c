@@ -177,6 +177,23 @@ static inline int broadcast_key_worker_mappings(MapReduce* app)
   bcast_err: return 1;
 }
 
+int workers_scatter(MapReduce* app)
+{
+  int worker;
+  int size;
+
+  for (worker = 1; worker < app->proc_count; ++worker) {
+    CHECK(scatter(worker, NULL, 0, &size, sizeof(size)) == 0,
+        scatter_err, "workers_scatter: Unable to get size.\n");
+    CHECK(scatterv(worker, NULL, NULL, NULL, 0, app->proc_count) == 0,
+        scatterv_err, "workers_scatter: Unable to call scatterv.\n");
+  }
+
+  return 0;
+
+  scatter_err: scatterv_err: return 1;
+}
+
 int master(MapReduce* app)
 {
 
@@ -188,11 +205,11 @@ int master(MapReduce* app)
   CHECK(broadcast_key_worker_mappings(app) == 0, bcast_kw_err,
       "master: Unable to broadcast key/worker mappings.\n");
 
-  NOT_IMPLEMENTED("master: Must scatter each time the workers scatter.");
+  CHECK(workers_scatter(app) == 0, scatter_err, "master: Unable to scatter with workers.\n");
   // TODO: maybe wait for results here. If not, then the master can finish.
   return 0;
 
-  distrib_err: bcast_kw_err: param_err: return 1;
+  scatter_err: distrib_err: bcast_kw_err: param_err: return 1;
 }
 
 static inline int perform_map_task(MapReduce* app)
@@ -416,14 +433,38 @@ static inline int send_reduce_data(MapReduce* app)
 
   return 0;
 
-  scatterv_err:
-  scatter_err: realloc_err: sizes_alloc_err: return 1;
+  scatterv_err: scatter_err: realloc_err: sizes_alloc_err: return 1;
 }
 
 static inline int perform_reduce(MapReduce* app)
 {
-  NOT_IMPLEMENTED("perform_reduce");
+  int i, j;
+  int* reduced;
+
+  CHECK((reduced = calloc(app->reduce_key_value_mappings.size, sizeof(*reduced))) != NULL,
+      alloc_err, "perform_reduce: Out of memory!\n");
+
+  for (i = 0; i < app->reduce_key_value_mappings.size; ++i) {
+    MK* first;
+
+    if (reduced[i])
+      continue;
+
+    reduced[i] = 1;
+    first = &app->reduce_key_value_mappings.array[i].key;
+    for (j = i + 1; j < app->reduce_key_value_mappings.size; ++j) {
+      MK* second = &app->reduce_key_value_mappings.array[j].key;
+      if (app->map_key_compare(first, second) == 0)
+        reduced[j] = 1;
+    }
+    // TODO: do something with the reduce result.. or not :)
+    (void) app->reduce(first, app->reduce_key_value_mappings.array);
+  }
+
+  free(reduced);
   return 0;
+
+  alloc_err: return 1;
 }
 
 int worker(MapReduce* app)
@@ -433,7 +474,6 @@ int worker(MapReduce* app)
   CHECK(receive_key_worker_mappings(app) == 0, err, "worker: Unable to receive key worker mappings.\n");
   CHECK(send_reduce_data(app) == 0, err, "worker: Unable to send reduce data.\n");
   CHECK(perform_reduce(app) == 0, err, "worker: Unable to perform reduce.\n");
-  NOT_IMPLEMENTED("worker");
   return 0;
 
   err: return 1;
