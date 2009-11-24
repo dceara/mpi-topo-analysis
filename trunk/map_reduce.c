@@ -99,7 +99,10 @@ static inline int distribute_map_tasks(MapReduce* app)
     int available_cnt = app->input_reader(app->input_filename, app->proc_count
         - 1, tasks);
 
-    CHECK(available_cnt != -1, input_err, "distribute_map_tasks: Unable to read input tasks.\n");
+    CHECK(available_cnt != -1,
+        input_err, "distribute_map_tasks: Unable to read input tasks.\n");
+    CHECK(available_cnt < app->proc_count,
+        input_err, "distribute_map_tasks: input_reader returned too many tasks.\n");
 
     DBG_PRINT("rank: %d: Called input_reader. Received %d tasks.\n", app->rank, available_cnt);
 
@@ -112,7 +115,7 @@ static inline int distribute_map_tasks(MapReduce* app)
     sizes[0] = 0;
     for (i = 0; i < available_cnt; ++i)
       sizes[i + 1] = sizeof(*tasks);
-    for (i = available_cnt; i < app->proc_count; ++i)
+    for (i = available_cnt + 1; i < app->proc_count; ++i)
       sizes[i] = 0;
 
     /* Inform the workers that we have Map tasks for them. */
