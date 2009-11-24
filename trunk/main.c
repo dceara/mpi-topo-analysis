@@ -18,54 +18,36 @@ int input_reader(const char* filename, int worker_count, InputPair* result)
 }
 
 /* TODO: Change mock input reader function! */
-int input_key_size(IK* key)
+MapPair* map(InputPair* input_pair, int* results_cnt)
+{
+  return NULL;
+}
+
+/* TODO: Change mock input reader function! */
+MV* reduce(MK* key_to_reduce, MapPair* all_values)
 {
   return 0;
 }
 
-/* TODO: Change mock input reader function! */
-int input_value_size(IV* val)
+int map_key_compare(const MK* first, const MK* second)
 {
+  if (first == NULL && second == NULL)
+    return 0;
+  if (first == NULL && second != NULL)
+    return -1;
+  if (first != NULL && second == NULL)
+    return 1;
+
+  NOT_IMPLEMENTED("map_key_compare");
   return 0;
 }
-
-/* TODO: Change mock input reader function! */
-void input_serialize(InputPair* p, char* ptr)
-{
-
-}
-
-/* TODO: Change mock input reader function! */
-int map(InputPair* input_pair, MapArray* result)
-{
-  return 0;
-}
-
-/* TODO: Change mock input reader function! */
-int reduce(MK* map_key, MapArray* map_values, MapArray* result)
-{
-  return 0;
-}
-
-static MRInputHandlers ihandlers = {
-    input_reader,
-    input_key_size,
-    input_value_size,
-    input_serialize
-};
-static MRMapHandlers mhandlers = {
-    map
-};
-static MRReduceHandlers rhandlers = {
-    reduce
-};
 
 int main(int argc, char** argv)
 {
   MapReduce* app;
 
   PRINT("Creating map reduce application... \n");
-  CHECK((app = create_map_reduce_app(&ihandlers, &mhandlers, &rhandlers,
+  CHECK((app = create_map_reduce_app(input_reader, map, map_key_compare, reduce,
               &argc, &argv, "test.txt")) != NULL, app_err,
       "Unable to create map reduce application\n");
 
