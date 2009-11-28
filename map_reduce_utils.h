@@ -5,8 +5,8 @@
  *      Author: iris
  */
 
-#ifndef MAP_REDUCE_H
-#define MAP_REDUCE_H
+#ifndef MAP_REDUCE_UTILS_H
+#define MAP_REDUCE_UTILS_H
 
 #include "map_reduce.h"
 
