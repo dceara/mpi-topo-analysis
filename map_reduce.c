@@ -403,7 +403,7 @@ static inline int send_reduce_data(MapReduce* app)
   int worker;
   int keys_for_worker;
 
-  sort_key_value_mappings(&app->map_key_value_mappings, app->map_key_compare);`
+  sort_key_value_mappings(&app->map_key_value_mappings, app->map_key_compare);
 
   for (i = 0; i < app->map_key_worker_mappings.size; ++i) {
     if (p == NULL || app->map_key_compare(&p->key,
