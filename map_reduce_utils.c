@@ -4,7 +4,8 @@
  *  Created on: Nov 28, 2009
  *      Author: iris
  */
- 
+
+#include <stdlib.h>
 #include "map_reduce_utils.h"
 
 void swap_kw(MapPair *i, MapPair *j)
