@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "map_reduce.h"
+#include "map_reduce_utils.h"
 #include "utils.h"
 #include "network.h"
 
@@ -184,7 +185,7 @@ static inline int distribute_map_tasks(MapReduce* app)
  */
 static inline int broadcast_key_worker_mappings(MapReduce* app)
 {
-  NOT_IMPLEMENTED("broadcast_key_worker_mappings: sort the map_key/worker array");
+  sort_key_worker_mappings(&app->map_key_worker_mappings, app->map_key_compare);
   /* Broadcast the number of mappings.*/
   DBG_PRINT("rank: %d: Broadcasting key/worker mappings size to workers.\n", app->rank);
   CHECK(broadcast(app->rank, &app->map_key_worker_mappings.size,
@@ -402,7 +403,7 @@ static inline int send_reduce_data(MapReduce* app)
   int worker;
   int keys_for_worker;
 
-  NOT_IMPLEMENTED("send_reduce_data: sort the map_key/values array");
+  sort_key_value_mappings(&app->map_key_value_mappings, app->map_key_compare);`
 
   for (i = 0; i < app->map_key_worker_mappings.size; ++i) {
     if (p == NULL || app->map_key_compare(&p->key,
