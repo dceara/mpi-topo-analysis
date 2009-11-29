@@ -17,13 +17,13 @@
  *  MAP_KEY_MAX_SIZE
  *  MAP_VALUE_MAX_SIZE
  */
-#define APPLICATION 1
-#if APPLICATION == 1
+#define APPLICATION WORD_COUNT
+#if APPLICATION == WORD_COUNT
 
 #define INPUT_KEY_MAX_SIZE 512
 /* 1MB input chunks */
 //#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
-#define INPUT_VALUE_MAX_SIZE 22
+#define INPUT_VALUE_MAX_SIZE 16
 /* 512 bytes words */
 #define MAP_KEY_MAX_SIZE 512
 /* The map value is a counter. */

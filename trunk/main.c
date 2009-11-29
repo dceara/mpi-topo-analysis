@@ -15,12 +15,11 @@
 #include "map_reduce.h"
 #include "utils.h"
 
+#if APPLICATION == WORD_COUNT
 int input_reader(const char* filename, int worker_count, InputPair* result)
 {
   static int fd = -1;
   int i;
-
-  DBG_PRINT("input_reader: fd = %d\n", fd);
 
   if (fd == -1) {
     CHECK((fd = open(filename, O_RDONLY)) != -1, open_err,
@@ -34,7 +33,7 @@ int input_reader(const char* filename, int worker_count, InputPair* result)
     result[i].val.data[read_cnt] = 0;
     if (read_cnt == 0) {
       close(fd);
-      return 0;
+      return i;
     }
     if (read_cnt < INPUT_VALUE_MAX_SIZE - 1) {
       ++i;
@@ -55,8 +54,6 @@ MapPair* map(InputPair* input_pair, int* results_cnt)
   int current_max_size = 16;
   MapPair* results;
 
-  DBG_PRINT("map: performing map!\n");
-
   *results_cnt = 0;
   CHECK((results = calloc(current_max_size, sizeof(*results))) != NULL,
       alloc_err, "map: Out of memory!\n");
@@ -65,8 +62,6 @@ MapPair* map(InputPair* input_pair, int* results_cnt)
   while (token != NULL) {
     int existing = 0;
     int i;
-
-    DBG_PRINT("map: FOUND KEY: %s with length %d\n", token, strlen(token));
 
     for (i = 0; i < *results_cnt; ++i) {
       if (strcmp(results[i].key.data, token) == 0) {
@@ -77,7 +72,6 @@ MapPair* map(InputPair* input_pair, int* results_cnt)
     if (existing) {
       int cnt = *((int*) (&results[i].val.data));
 
-      DBG_PRINT("MAP: incrementing counter for key %s\n", results[i].key.data);
       ++cnt;
       memcpy(results[i].val.data, &cnt, sizeof(cnt));
     } else {
@@ -99,12 +93,9 @@ MapPair* map(InputPair* input_pair, int* results_cnt)
       results[i].key.size = key_size;
       memcpy(results[*results_cnt - 1].val.data, &val, sizeof(val));
       results[*results_cnt - 1].val.size = sizeof(val);
-
-      DBG_PRINT("MAP: added key %s with counter 1.\n", results[i].key.data);
     }
     token = strtok(NULL, delim);
   }
-  DBG_PRINT("map: Success. No. of keys: %d\n", *results_cnt);
   return results;
 
   alloc_err: *results_cnt = -1;
@@ -140,6 +131,7 @@ MV* reduce(MK* key_to_reduce, MapPair* all_values, int total_cnt)
   PRINT("Reduce result: for key: %s -> value %d.\n", key_to_reduce->data, total);
   return 0;
 }
+#endif
 
 int main(int argc, char** argv)
 {
