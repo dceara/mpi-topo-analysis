@@ -50,7 +50,6 @@ int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
 
 int gather(int root, void* sendbuf, int sendcount, void* recvbuf, int recvcount)
 {
-  DBG_PRINT("GATHER called: sendcount = %d recvcount = %d\n", sendcount, recvcount);
   CHECK(MPI_Gather(sendbuf, sendcount, MPI_BYTE,
           recvbuf, recvcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
       gather_err, "gather: Error when calling MPI_Gather.\n");
