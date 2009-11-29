@@ -65,7 +65,7 @@ int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
   int i;
   int index;
 
-  CHECK((displ = malloc(groupsize * sizeof(*displ))) != NULL, alloc_err,
+  CHECK((displ = calloc(groupsize, sizeof(*displ))) != NULL, alloc_err,
       "gatherv: Out of memory!\n");
   if (recvcounts != NULL) {
     for (i = 0, index = 0; i < groupsize; ++i) {
