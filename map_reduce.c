@@ -86,7 +86,7 @@ static inline int distribute_map_tasks(MapReduce* app)
 {
   InputPair* tasks;
   int* sizes;
-  int buf[1];
+  int buf;
 
   CHECK((tasks = malloc((app->proc_count - 1) * sizeof(*tasks))) != NULL,
       tasks_alloc_err, "distribute_map_tasks: Out of memory!\n");
@@ -103,9 +103,7 @@ static inline int distribute_map_tasks(MapReduce* app)
     CHECK(available_cnt != -1,
         input_err, "distribute_map_tasks: Unable to read input tasks.\n");
     CHECK(available_cnt < app->proc_count,
-        input_err, "distribute_map_tasks: input_reader returned too many tasks.\n");
-
-    DBG_PRINT("rank: %d: Called input_reader. Received %d tasks.\n", app->rank, available_cnt);
+        input_err, "distribute_map_tasks: input_reader returned too many tasks: %d.\n", available_cnt);
 
     if (available_cnt == 0) {
       DBG_PRINT("rank: %d: No more map tasks to send.\n", app->rank);
@@ -126,7 +124,7 @@ static inline int distribute_map_tasks(MapReduce* app)
 
     /* Announce workers whether they have available tasks or not. */
     DBG_PRINT("rank: %d: Send the sizes of the tasks to the workers.\n", app->rank);
-    CHECK(scatter(app->rank, sizes, sizeof(*sizes), buf, sizeof(*sizes)) == 0,
+    CHECK(scatter(app->rank, sizes, sizeof(*sizes), &buf, sizeof(*sizes)) == 0,
         scatter_err, "distribute_map_tasks: Unable to scatter tasks sizes.\n");
 
     /* Send tasks to the workers. */
@@ -136,11 +134,13 @@ static inline int distribute_map_tasks(MapReduce* app)
 
     /* Receive number of result keys from each worker. */
     DBG_PRINT("rank: %d: Receive the number of result keys from each worker.\n", app->rank);
-    CHECK(gather(app->rank, buf, sizeof(*sizes), sizes, sizeof(*sizes)) == 0,
+    CHECK(gather(app->rank, &buf, sizeof(*sizes), sizes, sizeof(*sizes)) == 0,
         gather_err, "distribute_map_tasks: Unable to gather number of result keys.\n");
 
     for (i = 0; i < app->proc_count; ++i) {
       total_map_mappings_cnt += sizes[i] / sizeof(MapKeyWorkerPair);
+      DBG_PRINT("rank: %d: worker %d will send %d bytes.\n", app->rank,
+          i, sizes[i]);
       DBG_PRINT("rank: %d: worker %d will send %d keys.\n", app->rank,
           i, sizes[i] / sizeof(MapKeyWorkerPair));
     }
@@ -185,6 +185,17 @@ static inline int distribute_map_tasks(MapReduce* app)
  */
 static inline int broadcast_key_worker_mappings(MapReduce* app)
 {
+  int i;
+
+  DBG_PRINT("rank %d: The key/worker mappings are:\n", app->rank);
+  for (i = 0; i < app->map_key_worker_mappings.size; ++ i) {
+    DBG_PRINT("\t%s->%d size = %d actual_size = %d\n",
+        app->map_key_worker_mappings.array[i].key.data,
+        app->map_key_worker_mappings.array[i].worker,
+        app->map_key_worker_mappings.array[i].key.size,
+        strlen(app->map_key_worker_mappings.array[i].key.data));
+  }
+
   sort_key_worker_mappings(&app->map_key_worker_mappings, app->map_key_compare);
   /* Broadcast the number of mappings.*/
   DBG_PRINT("rank: %d: Broadcasting key/worker mappings size to workers.\n", app->rank);
@@ -267,13 +278,18 @@ static inline int perform_map_task(MapReduce* app)
   if (task_available) {
     int i;
     int old_mappings_size = app->map_key_value_mappings.size;
+    int map_key_worker_size;
 
     /* Perform the map operation. */
-    CHECK((map_results = app->map(&task, &map_results_cnt)) != NULL,
+    map_results = app->map(&task, &map_results_cnt);
+    CHECK(map_results_cnt != -1,
         map_err, "perform_map_task: Unable to execute map operation.\n");
 
-    /* Send the number of result keys to the master. */
-    CHECK(gather(MASTER_RANK, &map_results_cnt, sizeof(map_results_cnt), NULL, 0) == 0,
+    map_key_worker_size = map_results_cnt * sizeof(MapKeyWorkerPair);
+    DBG_PRINT("rank: %d: perform_map_task: sending map_results_cnt = %d.\n", app->rank, map_results_cnt);
+
+    /* Send the size of the result keys to the master. */
+    CHECK(gather(MASTER_RANK, &map_key_worker_size, sizeof(map_key_worker_size), NULL, 0) == 0,
         gather_err, "perform_map_task: Unable to send number of result keys to the master.\n");
 
     CHECK((app->map_key_value_mappings.array =
@@ -378,6 +394,8 @@ static inline int get_worker_for_key(MapReduce* app, MK* key,
   int current_unique_key_index = 0;
   MapKeyWorkerPair* p = NULL;
 
+  DBG_PRINT("rank %d: get_worker_for_key: keys_for_worker: %d\n", app->rank, keys_for_worker);
+
   for (i = 0; i < app->map_key_worker_mappings.size; ++i) {
     if (p == NULL || app->map_key_compare(&p->key,
         &app->map_key_worker_mappings.array[i].key) != 0) {
@@ -405,6 +423,17 @@ static inline int send_reduce_data(MapReduce* app)
 
   sort_key_value_mappings(&app->map_key_value_mappings, app->map_key_compare);
 
+  DBG_PRINT("rank %d: My local map key/worker mappings are: \n", app->rank);
+  for (i = 0; i < app->map_key_worker_mappings.size; ++i) {
+    DBG_PRINT("\t%s -> %d\n", app->map_key_worker_mappings.array[i].key.data,
+        app->map_key_worker_mappings.array[i].worker);
+  }
+
+  DBG_PRINT("rank %d: My local map keys are: \n", app->rank);
+  for (i = 0; i < app->map_key_value_mappings.size; ++i) {
+    DBG_PRINT("\t%s\n", app->map_key_value_mappings.array[i].key.data);
+  }
+
   for (i = 0; i < app->map_key_worker_mappings.size; ++i) {
     if (p == NULL || app->map_key_compare(&p->key,
         &app->map_key_worker_mappings.array[i].key) != 0) {
@@ -414,7 +443,7 @@ static inline int send_reduce_data(MapReduce* app)
   }
 
   DBG_PRINT("rank: %d: I counted %d unique keys.\n", app->rank, unique_key_cnt);
-  keys_for_worker = (unique_key_cnt - 1) / (app->proc_count - 1);
+  keys_for_worker = (unique_key_cnt - 1) / (app->proc_count - 1) + 1;
 
   for (worker = 1; worker < app->proc_count; ++worker) {
     int size;
@@ -435,6 +464,11 @@ static inline int send_reduce_data(MapReduce* app)
         sizes[get_worker_for_key(app, key, keys_for_worker)] += sizeof(MapPair);
       }
 
+      DBG_PRINT("rank: %d: sending these sizes to other workers:\n", app->rank);
+      for (i = 0; i < app->proc_count; ++ i) {
+        DBG_PRINT("\t%d\n", sizes[i]);
+      }
+
       DBG_PRINT("rank: %d: Scattering map values sizes to all other workers.\n", app->rank);
       // TODO: We have a memory leak here: if the check fails then 'sizes' is never freed.
       CHECK(scatter(app->rank, sizes, sizeof(*sizes), &size, sizeof(size)) == 0,
@@ -442,6 +476,8 @@ static inline int send_reduce_data(MapReduce* app)
           app->rank);
 
       size = size / sizeof(MapPair);
+
+      DBG_PRINT("rank: %d: I will process %d map pairs.\n", app->rank, size);
 
       // TODO: We have a memory leak here: if the check fails then 'sizes' is never freed.
       CHECK((app->reduce_key_value_mappings.array =
@@ -454,7 +490,7 @@ static inline int send_reduce_data(MapReduce* app)
       // TODO: We have a memory leak here: if the check fails then 'sizes' is never freed.
       CHECK(scatterv(app->rank, app->map_key_value_mappings.array,
               sizes, app->reduce_key_value_mappings.array + old_reduce_size,
-              size, app->proc_count) == 0,
+              size * sizeof(MapPair), app->proc_count) == 0,
           scatterv_err, "send_reduce_data: Worker %d: Unable to scatter map values to other workers.\n",
           app->rank);
 
@@ -466,8 +502,9 @@ static inline int send_reduce_data(MapReduce* app)
           scatter_err, "send_reduce_data: Worker %d: Unable to receive size from worker %d.\n",
           app->rank, worker);
 
-      size = size / sizeof(MapPair);
+      DBG_PRINT("rank %d: I received the following reduce key size: %d\n", app->rank, size);
 
+      size = size / sizeof(MapPair);
       CHECK((app->reduce_key_value_mappings.array =
               realloc(app->reduce_key_value_mappings.array,
                   (old_reduce_size + size) * sizeof(MapPair))) != NULL,
@@ -476,10 +513,21 @@ static inline int send_reduce_data(MapReduce* app)
 
       DBG_PRINT("rank: %d: Receiving map values from worker %d.\n", app->rank, worker);
       CHECK(scatterv(worker, NULL, NULL, app->reduce_key_value_mappings.array + old_reduce_size,
-              size, app->proc_count) == 0,
+              size * sizeof(MapPair), app->proc_count) == 0,
           scatterv_err, "send_reduce_data: Worker %d: Unable to receive values from worker %d.\n",
           app->rank, worker);
+
+      DBG_PRINT("rank %d: I received the following reduce keys:\n", app->rank);
+      for (i = 0; i < size; ++ i) {
+        MapPair* p = &app->reduce_key_value_mappings.array[old_reduce_size + i];
+        DBG_PRINT("\t%s\n", p->key.data);
+      }
     }
+  }
+
+  DBG_PRINT("rank %d: My reduce keys are: \n", app->rank);
+  for (i = 0; i < app->reduce_key_value_mappings.size; ++i) {
+    DBG_PRINT("\t%s\n", app->reduce_key_value_mappings.array[i].key.data);
   }
 
   return 0;
@@ -509,7 +557,8 @@ static inline int perform_reduce(MapReduce* app)
         reduced[j] = 1;
     }
     // TODO: do something with the reduce result.. or not :)
-    (void) app->reduce(first, app->reduce_key_value_mappings.array);
+    (void) app->reduce(first, app->reduce_key_value_mappings.array,
+        app->reduce_key_value_mappings.size);
   }
 
   free(reduced);

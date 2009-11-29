@@ -10,9 +10,10 @@
 
 #include "map_reduce.h"
 
-void sort_key_worker_mappings(MapKeyWorkerPairArray* array, map_key_compare_ptr compare);
+void sort_key_worker_mappings(MapKeyWorkerPairArray* array,
+    map_key_compare_ptr compare);
 
-void sort_key_value_mappings(MapKeyValuePairArray* array, map_key_compare_ptr compare); 
-
+void sort_key_value_mappings(MapKeyValuePairArray* array,
+    map_key_compare_ptr compare);
 
 #endif

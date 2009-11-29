@@ -28,9 +28,16 @@ int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
     int recvcount, int groupsize)
 {
   int* displ;
+  int i, index;
 
   CHECK((displ = calloc(groupsize, sizeof(*displ))) != NULL, alloc_err,
       "scatterv: Out of memory!\n");
+  if (sendcounts != NULL) {
+    for (i = 0, index = 0; i < groupsize; ++i) {
+      displ[i] = index;
+      index += sendcounts[i];
+    }
+  }
   CHECK(MPI_Scatterv(sendbuf, sendcounts, displ, MPI_BYTE,
           recvbuf, recvcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
       scatter_err, "scatterv: Error when calling MPI_Scatterv.\n");
@@ -43,6 +50,7 @@ int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
 
 int gather(int root, void* sendbuf, int sendcount, void* recvbuf, int recvcount)
 {
+  DBG_PRINT("GATHER called: sendcount = %d recvcount = %d\n", sendcount, recvcount);
   CHECK(MPI_Gather(sendbuf, sendcount, MPI_BYTE,
           recvbuf, recvcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
       gather_err, "gather: Error when calling MPI_Gather.\n");
@@ -55,9 +63,18 @@ int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
     int* recvcounts, int groupsize)
 {
   int* displ;
+  int i;
+  int index;
 
-  CHECK((displ = calloc(groupsize, sizeof(*displ))) != NULL, alloc_err,
+  CHECK((displ = malloc(groupsize * sizeof(*displ))) != NULL, alloc_err,
       "gatherv: Out of memory!\n");
+  if (recvcounts != NULL) {
+    for (i = 0, index = 0; i < groupsize; ++i) {
+      displ[i] = index;
+      index += recvcounts[i];
+    }
+  }
+
   CHECK(MPI_Gatherv(sendbuf, sendcount, MPI_BYTE, recvbuf,
           recvcounts, displ, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
       gather_err, "gatherv: Error when calling MPI_Gatherv.\n")
