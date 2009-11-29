@@ -22,7 +22,8 @@
 
 #define INPUT_KEY_MAX_SIZE 512
 /* 1MB input chunks */
-#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
+//#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
+#define INPUT_VALUE_MAX_SIZE 22
 /* 512 bytes words */
 #define MAP_KEY_MAX_SIZE 512
 /* The map value is a counter. */
@@ -144,7 +145,7 @@ typedef MapPair* (*map_ptr)(InputPair* input_pair, int* results_cnt);
  * Takes a map_key and a list of all map_key/value pairs and reduces the requested key.
  * Returns a list of map values on success, NULL otherwise.
  */
-typedef MV* (*reduce_ptr)(MK* key_to_reduce, MapPair* all_values);
+typedef MV* (*reduce_ptr)(MK* key_to_reduce, MapPair* all_values, int total_cnt);
 
 typedef struct map_reduce MapReduce;
 
