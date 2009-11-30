@@ -141,7 +141,8 @@ static inline int distribute_map_tasks(MapReduce* app)
       total_map_mappings_cnt += sizes[i] / sizeof(MapKeyWorkerPair);
 
     /* Increase the storing space in the global array for the new map keys. */
-    CHECK((app->map_key_worker_mappings.array = realloc(app->map_key_worker_mappings.array,
+    CHECK((old_mappings_cnt + total_map_mappings_cnt) == 0 ||
+        (app->map_key_worker_mappings.array = realloc(app->map_key_worker_mappings.array,
                 (old_mappings_cnt + total_map_mappings_cnt) * sizeof(MapKeyWorkerPair))) != NULL,
         realloc_err, "distribute_map_tasks: Out of memory!\n");
     app->map_key_worker_mappings.size += total_map_mappings_cnt;
@@ -205,8 +206,7 @@ int workers_scatter(MapReduce* app)
   for (worker = 1; worker < app->proc_count; ++worker) {
     DBG_PRINT("rank: %d: Receiving reduce work size from worker %d.\n", app->rank, worker);
     CHECK(scatter(worker, NULL, 0, &size, sizeof(size)) == 0,
-        scatter_err, "workers_scatter: Unable to get size.\n");
-    DBG_PRINT("rank: %d: Receiving work (hopefully nothing) from worker %d.\n", app->rank, worker);
+        scatter_err, "workers_scatter: Unable to get size.\n");DBG_PRINT("rank: %d: Receiving work (hopefully nothing) from worker %d.\n", app->rank, worker);
     CHECK(scatterv(worker, NULL, NULL, NULL, 0, app->proc_count) == 0,
         scatterv_err, "workers_scatter: Unable to call scatterv.\n");
   }
@@ -275,7 +275,8 @@ static inline int perform_map_task(MapReduce* app)
     CHECK(gather(MASTER_RANK, &map_key_worker_size, sizeof(map_key_worker_size), NULL, 0) == 0,
         gather_err, "perform_map_task: Unable to send number of result keys to the master.\n");
 
-    CHECK((app->map_key_value_mappings.array =
+    CHECK((old_mappings_size + map_results_cnt) == 0 ||
+        (app->map_key_value_mappings.array =
             realloc(app->map_key_value_mappings.array,
                 (old_mappings_size + map_results_cnt) * sizeof(MapPair)))!=NULL,
         mkv_alloc_err, "perform_map_task: Out of memory!\n");
@@ -286,7 +287,8 @@ static inline int perform_map_task(MapReduce* app)
           &map_results[i], sizeof(*map_results));
 
     /* Create key_worker_array with the newly computed keys. */
-    CHECK((key_worker_array = malloc(map_results_cnt * sizeof(*key_worker_array))) != NULL,
+    CHECK(map_results_cnt == 0 ||
+        (key_worker_array = malloc(map_results_cnt * sizeof(*key_worker_array))) != NULL,
         alloc_err, "perform_map_task: Out of memory!\n");
     for (i = 0; i < map_results_cnt; ++i) {
       memcpy(&key_worker_array[i].key, &map_results[i].key,
@@ -442,7 +444,7 @@ static inline int send_reduce_data(MapReduce* app)
       size = size / sizeof(MapPair);
 
       // TODO: We have a memory leak here: if the check fails then 'sizes' is never freed.
-      CHECK((app->reduce_key_value_mappings.array =
+      CHECK((old_reduce_size + size) == 0 || (app->reduce_key_value_mappings.array =
               realloc(app->reduce_key_value_mappings.array,
                   (old_reduce_size + size) * sizeof(MapPair))) != NULL,
           realloc_err, "send_reduce_data: Out of memory!\n");
@@ -465,7 +467,7 @@ static inline int send_reduce_data(MapReduce* app)
           app->rank, worker);
 
       size = size / sizeof(MapPair);
-      CHECK((app->reduce_key_value_mappings.array =
+      CHECK((old_reduce_size + size) == 0 || (app->reduce_key_value_mappings.array =
               realloc(app->reduce_key_value_mappings.array,
                   (old_reduce_size + size) * sizeof(MapPair))) != NULL,
           realloc_err, "send_reduce_data: Out of memory!\n");
@@ -506,7 +508,7 @@ static inline int perform_reduce(MapReduce* app)
         reduced[j] = 1;
     }
     // TODO: do something with the reduce result.. or not :)
-    (void) app->reduce(first, app->reduce_key_value_mappings.array,
+    (void) app->reduce(app->rank, first, app->reduce_key_value_mappings.array,
         app->reduce_key_value_mappings.size);
   }
 

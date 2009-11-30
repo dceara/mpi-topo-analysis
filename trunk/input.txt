@@ -1,2 +1,6 @@
-apple pear mushroom 
+apple pear pattern mushroom 
 pumpkin apple pear pear
+
+this     patternshould appear as is!
+
+this should not appear!!!

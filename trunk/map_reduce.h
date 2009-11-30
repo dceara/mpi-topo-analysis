@@ -12,15 +12,15 @@
 
 /*
  * Each application must define its own:
- *  INPUT_KEY_MAX_SIZE
- *  INPUT_VALUE_MAX_SIZE
- *  MAP_KEY_MAX_SIZE
- *  MAP_VALUE_MAX_SIZE
+ *  struct input_key
+ *  struct input_value
+ *  struct map_key
+ *  struct map_value
  */
-#define APPLICATION WORD_COUNT
-#if APPLICATION == WORD_COUNT
+#define WORD_COUNTING 1
+#define DISTRIBUTED_GREP 2
 
-#define INPUT_KEY_MAX_SIZE 512
+#if APPLICATION == WORD_COUNTING
 /* 1MB input chunks */
 //#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
 #define INPUT_VALUE_MAX_SIZE 16
@@ -28,55 +28,60 @@
 #define MAP_KEY_MAX_SIZE 512
 /* The map value is a counter. */
 #define MAP_VALUE_MAX_SIZE sizeof(int)
+
+struct input_key
+{
+};
+
+struct input_value
+{
+  char data[INPUT_VALUE_MAX_SIZE];
+};
+
+struct map_key
+{
+  char word[MAP_KEY_MAX_SIZE];
+};
+
+struct map_value
+{
+  unsigned int counter;
+};
 #endif
 
-#ifndef INPUT_KEY_MAX_SIZE
-#error INPUT_KEY_MAX_SIZE missing
-#endif
+#if APPLICATION == DISTRIBUTED_GREP
+/* 1MB input chunks */
+//#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
+#define INPUT_VALUE_MAX_SIZE 1024
+/* 512 bytes lines */
+#define MAP_KEY_MAX_SIZE 512
+struct input_key
+{
+};
 
-#ifndef INPUT_VALUE_MAX_SIZE
-#error INPUT_VALUE_MAX_SIZE missing
-#endif
+struct input_value
+{
+  char data[INPUT_VALUE_MAX_SIZE];
+};
 
-#ifndef MAP_KEY_MAX_SIZE
-#error MAP_KEY_MAX_SIZE missing
-#endif
+struct map_key
+{
+  char line[MAP_KEY_MAX_SIZE];
+};
 
-#ifndef MAP_VALUE_MAX_SIZE
-#error MAP_VALUE_MAX_SIZE missing
+struct map_value
+{
+  unsigned int found;
+};
 #endif
 
 typedef struct input_key IK;
 
-struct input_key
-{
-  unsigned int size;
-  char data[INPUT_KEY_MAX_SIZE];
-};
-
 typedef struct input_value IV;
-
-struct input_value
-{
-  unsigned int size;
-  char data[INPUT_VALUE_MAX_SIZE];
-};
 
 typedef struct map_key MK;
 
-struct map_key
-{
-  unsigned int size;
-  char data[MAP_KEY_MAX_SIZE];
-};
-
 typedef struct map_value MV;
-
-struct map_value
-{
-  unsigned int size;
-  char data[MAP_VALUE_MAX_SIZE];
-};
 
 typedef struct input_pair InputPair;
 
@@ -145,7 +150,8 @@ typedef MapPair* (*map_ptr)(InputPair* input_pair, int* results_cnt);
  * Takes a map_key and a list of all map_key/value pairs and reduces the requested key.
  * Returns a list of map values on success, NULL otherwise.
  */
-typedef MV* (*reduce_ptr)(MK* key_to_reduce, MapPair* all_values, int total_cnt);
+typedef MV
+* (*reduce_ptr)(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt);
 
 typedef struct map_reduce MapReduce;
 
@@ -174,8 +180,8 @@ struct map_reduce
  * function. Also, pointers to the application command line arguments must be supplied.
  * Returns the application on success, NULL otherwise.
  */
-MapReduce* create_map_reduce_app(input_reader_ptr input_reader,
-    map_ptr map, map_key_compare_ptr map_key_compare, reduce_ptr reduce, int* argcp,
+MapReduce* create_map_reduce_app(input_reader_ptr input_reader, map_ptr map,
+    map_key_compare_ptr map_key_compare, reduce_ptr reduce, int* argcp,
     char*** argvp, const char* input_filename);
 /*
  * Destroys an existing map/reduce application.
