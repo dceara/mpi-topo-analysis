@@ -17,7 +17,6 @@
     assert(0); \
   } while (0)
 
-#define DEBUG
 #ifdef DEBUG
 #define DBG_PRINT(format, ...) \
   do { \

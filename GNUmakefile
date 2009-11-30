@@ -1,5 +1,13 @@
 CC=mpicc
-CFLAGS=-Wall
+#word counting
+APP=WORD_COUNTING
+#distributed grep
+#APP=DISTRIBUTED_GREP
+#debugging CFLAGS
+#DEBUG=-DDEBUG
+#release
+DEBUG=-UDEBUG
+CFLAGS=-Wall -DAPPLICATION=$(APP) $(DEBUG)
 
 all: default
 
