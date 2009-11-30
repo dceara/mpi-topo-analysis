@@ -49,7 +49,8 @@ int input_reader(const char* filename, int worker_count, InputPair* result)
 MapPair* map(InputPair* input_pair, int* results_cnt)
 {
   /* BE CAREFUL HERE because after the strtok is called the input is changed!!!*/
-  const char delim[] = " \t\r\n";
+  /* Stupid way of finding words.. only for testing purposes :P */
+  const char delim[] = " \t\r\n!.,;:\'\"<>[]{}`~!@#$%^&*()-_=+/*-+";
   char* token;
   int current_max_size = 16;
   MapPair* results;
