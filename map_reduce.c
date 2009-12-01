@@ -204,9 +204,8 @@ int workers_scatter(MapReduce* app)
   int size;
 
   for (worker = 1; worker < app->proc_count; ++worker) {
-    DBG_PRINT("rank: %d: Receiving reduce work size from worker %d.\n", app->rank, worker);
     CHECK(scatter(worker, NULL, 0, &size, sizeof(size)) == 0,
-        scatter_err, "workers_scatter: Unable to get size.\n");DBG_PRINT("rank: %d: Receiving work (hopefully nothing) from worker %d.\n", app->rank, worker);
+        scatter_err, "workers_scatter: Unable to get size.\n");
     CHECK(scatterv(worker, NULL, NULL, NULL, 0, app->proc_count) == 0,
         scatterv_err, "workers_scatter: Unable to call scatterv.\n");
   }
