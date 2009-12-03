@@ -14,7 +14,8 @@
 #include "utils.h"
 #include "network.h"
 
-int scatter(int root, void* sendbuf, int size, void* recvbuf, int recvcount)
+int scatter(int root, int rank, int net_size, void* sendbuf, int size,
+    void* recvbuf, int recvcount)
 {
   CHECK(MPI_Scatter(sendbuf, size, MPI_BYTE, recvbuf, recvcount, MPI_BYTE,
           root, MPI_COMM_WORLD) == MPI_SUCCESS,
@@ -24,8 +25,8 @@ int scatter(int root, void* sendbuf, int size, void* recvbuf, int recvcount)
   scatter_err: return 1;
 }
 
-int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
-    int recvcount, int groupsize)
+int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
+    void* recvbuf, int recvcount, int groupsize)
 {
   int* displ;
   int i, index;
@@ -48,7 +49,8 @@ int scatterv(int root, void* sendbuf, int* sendcounts, void* recvbuf,
   alloc_err: return 1;
 }
 
-int gather(int root, void* sendbuf, int sendcount, void* recvbuf, int recvcount)
+int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
+    void* recvbuf, int recvcount)
 {
   CHECK(MPI_Gather(sendbuf, sendcount, MPI_BYTE,
           recvbuf, recvcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
@@ -58,8 +60,8 @@ int gather(int root, void* sendbuf, int sendcount, void* recvbuf, int recvcount)
   gather_err: return 1;
 }
 
-int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
-    int* recvcounts, int groupsize)
+int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
+    void* recvbuf, int* recvcounts, int groupsize)
 {
   int* displ;
   int i;
@@ -84,7 +86,7 @@ int gatherv(int root, void* sendbuf, int sendcount, void* recvbuf,
   alloc_err: return 1;
 }
 
-int broadcast(int root, void* sendbuf, int sendcount)
+int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
 {
   CHECK(MPI_Bcast(sendbuf, sendcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
       bcast_err, "broadcast: Error when calling MPI_Bcast.\n");
