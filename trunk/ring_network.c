@@ -11,11 +11,11 @@
 #include "utils.h"
 #include "network.h"
 
-static int BCAST_TAG = 1;
-static int SCATTER_TAG = 2;
-static int SCATTERV_TAG = 3;
-static int GATHER_TAG = 4;
-static int GATHERV_TAG = 5;
+static const int BCAST_TAG = 1;
+static const int SCATTER_TAG = 2;
+static const int SCATTERV_TAG = 3;
+static const int GATHER_TAG = 4;
+static const int GATHERV_TAG = 5;
 
 int init_topology(int proc_count)
 {
