@@ -17,10 +17,14 @@ static int SCATTERV_TAG = 3;
 static int GATHER_TAG = 4;
 static int GATHERV_TAG = 5;
 
+int init_topology(int proc_count)
+{
+  return 0;
+}
+
 int scatter(int root, int rank, int net_size, void* sendbuf, int size,
     void* recvbuf, int recvcount)
 {
-  MPI_Status status;
   int i;
   int next = (rank + 1) % net_size;
 
@@ -39,13 +43,13 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
         - 1) % net_size;
 
     MPI_Recv(recvbuf, recvcount, MPI_BYTE, prev, SCATTER_TAG, MPI_COMM_WORLD,
-        &status);
+        MPI_STATUS_IGNORE);
     for (i = 0; i < fw_cnt; ++i) {
       CHECK(MPI_Send(recvbuf, recvcount, MPI_BYTE, next,
               SCATTER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "scatter: Error when forwarding scatter values.\n");
       CHECK(MPI_Recv(recvbuf, recvcount, MPI_BYTE, prev,
-              SCATTER_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              SCATTER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "scatter: Error when receiving scatter values.\n");
     }
   }
@@ -67,7 +71,6 @@ static inline int get_offset(int index, const int* const counts)
 int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
     void* recvbuf, int recvcount, int groupsize)
 {
-  MPI_Status status;
   int i;
   int next = (rank + 1) % net_size;
   char* tmp = NULL;
@@ -77,44 +80,40 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
       int next_index = (rank + i) % net_size;
       int next_offset = get_offset(next_index, sendcounts);
 
-      CHECK(MPI_Send(&sendcounts[next_index], sizeof(*sendcounts),
-              MPI_BYTE, next, SCATTERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
-          err, "scatterv: Error when scatteringv as root.\n");
-
       CHECK(MPI_Send((char* )sendbuf + next_offset, sendcounts[next_index], MPI_BYTE, next,
               SCATTERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "scatterv: Error when scattering as root.\n");
     }
     memcpy(recvbuf, sendbuf + get_offset(rank, sendcounts), sendcounts[rank]);
   } else {
+    MPI_Status status;
     int message_size;
     int prev = rank > 0 ? rank - 1 : net_size - 1;
     int fw_cnt = root - rank > 0 ? root - rank - 1 : (net_size + root - rank
         - 1) % net_size;
 
-    CHECK(MPI_Recv(&message_size, sizeof(message_size), MPI_BYTE, prev,
-            SCATTERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
-        err, "scatterv: Error when forwarding scatter values.\n");
+    CHECK(MPI_Probe(prev, SCATTERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+        err, "scatterv: Error when calling MPI_Probe.\n");
+    message_size = status._count;
+
     CHECK((tmp = malloc(message_size * sizeof(*tmp))) != NULL || message_size == 0,
         err, "scatterv: Out of memory!\n");
     CHECK(MPI_Recv(tmp, message_size, MPI_BYTE, prev, SCATTERV_TAG, MPI_COMM_WORLD,
-            &status) == MPI_SUCCESS,
+        MPI_STATUS_IGNORE) == MPI_SUCCESS,
         err, "scatterv: Error when receiving scatter values.\n");
     for (i = 0; i < fw_cnt; ++i) {
-      CHECK(MPI_Send(&message_size, sizeof(message_size), MPI_BYTE,
-              next, SCATTERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
-          err, "scatter: Error when forwarding scatter values.\n");
       CHECK(MPI_Send(tmp, message_size, MPI_BYTE, next,
               SCATTERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "scatter: Error when forwarding scatter values.\n");
 
-      CHECK(MPI_Recv(&message_size, sizeof(message_size), MPI_BYTE, prev,
-              SCATTERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
-          err, "scatter: Error when receiving scatter values.\n");
+      CHECK(MPI_Probe(prev, SCATTERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "scatterv: Error when calling MPI_Probe.\n");
+      message_size = status._count;
+
       CHECK((tmp = realloc(tmp, message_size * sizeof(*tmp))) != NULL || message_size == 0,
           err, "scatterv: Out of memory1\n");
       CHECK(MPI_Recv(tmp, message_size, MPI_BYTE, prev,
-              SCATTERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              SCATTERV_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "scatter: Error when receiving scatter values.\n");
     }
     memcpy(recvbuf, tmp, recvcount);
@@ -129,8 +128,6 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
 int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
     void* recvbuf, int recvcount)
 {
-
-  MPI_Status status;
   int i;
   int prev = rank > 0 ? rank - 1 : net_size - 1;
   char* tmp = NULL;
@@ -140,7 +137,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
       int next_index = (rank + net_size - i) % net_size;
 
       CHECK(MPI_Recv(recvbuf + next_index * recvcount, recvcount, MPI_BYTE, prev,
-              GATHER_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              GATHER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gather: Unable to receive gather messages as root.\n");
     }
     memcpy(recvbuf + rank * recvcount, sendbuf, recvcount);
@@ -157,7 +154,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
 
     for (i = 0; i < fw_cnt; ++i) {
       CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, prev,
-              GATHER_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              GATHER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gather: Unable to receive message to forward.\n");
       CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, next,
               GATHER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
@@ -174,7 +171,6 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
 int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     void* recvbuf, int* recvcounts, int groupsize)
 {
-  MPI_Status status;
   int i;
   int prev = rank > 0 ? rank - 1 : net_size - 1;
   char* tmp = NULL;
@@ -184,7 +180,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
       int next_index = (rank + net_size - i) % net_size;
 
       CHECK(MPI_Recv(recvbuf + get_offset(next_index, recvcounts), recvcounts[next_index], MPI_BYTE, prev,
-              GATHERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              GATHERV_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gather: Unable to receive gather messages as root.\n");
     }
     memcpy(recvbuf + get_offset(rank, recvcounts), sendbuf, recvcounts[rank]);
@@ -193,39 +189,25 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int fw_cnt = rank - root > 0 ? rank - root - 1 : (net_size + rank - root
         - 1) % net_size;
 
-    /* Send first the size of the message, because only the root
-     * and the current process know the size.*/
-    if (next != root) {
-      CHECK(MPI_Send(&sendcount, sizeof(sendcount), MPI_BYTE, next, GATHERV_TAG,
-              MPI_COMM_WORLD) == MPI_SUCCESS,
-          err, "gatherv: Unable to forward first size.\n");
-    }
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, next,
             GATHERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "gather: Unable to send gather message.\n");
 
     for (i = 0; i < fw_cnt; ++i) {
       int message_size;
+      MPI_Status status;
 
-      /* Receive the size of the message to forward. */
-      CHECK(MPI_Recv(&message_size, sizeof(message_size), MPI_BYTE, prev,
-              GATHERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
-          err, "gatherv: Unable to receive the size of the message to forward.");
+      CHECK(MPI_Probe(prev, GATHERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gatherv: Error when calling MPI_Probe.\n");
+      message_size = status._count;
+
       /* Reserve memory for the message to forward. */
       CHECK((tmp = realloc(tmp, message_size * sizeof(*tmp))) != NULL || message_size == 0,
           err, "gatherv: Out of memory!\n");
       /*Receive the message to forward.*/
       CHECK(MPI_Recv(tmp, message_size, MPI_BYTE, prev,
-              GATHERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              GATHERV_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gatherv: Unable to receive message to forward.\n");
-      /* Send the size of the message to the next node, except the root, because it knows
-       * all the sizes.
-       */
-      if (next != root) {
-        CHECK(MPI_Send(&message_size, sizeof(message_size), MPI_BYTE, next,
-            GATHERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
-            err, "gatherv: Unable to forward message size.\n");
-      }
       /* Forward the message to the next node.*/
       CHECK(MPI_Send(tmp, message_size, MPI_BYTE, next,
               GATHERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
@@ -242,7 +224,6 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
 
 int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
 {
-  MPI_Status status;
   int next = (rank + 1) % net_size;
 
   if (root == rank) {
@@ -258,11 +239,11 @@ int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
     //if (rank == ((root - 1) % net_size)) {
     if ((root > 0 && rank == root - 1) || (root == 0 && rank == net_size - 1)) {
       CHECK(MPI_Recv(sendbuf, sendcount, MPI_BYTE, prev, BCAST_TAG,
-              MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "broadcast: Error when receiving message from root.\n");
     } else {
       CHECK(MPI_Recv(sendbuf, sendcount, MPI_BYTE, prev, BCAST_TAG,
-              MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+              MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "broadcast: Error when receiving message from root.\n");
       CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, next, BCAST_TAG,
               MPI_COMM_WORLD) == MPI_SUCCESS,

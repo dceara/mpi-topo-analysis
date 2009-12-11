@@ -58,6 +58,8 @@ MapReduce* create_map_reduce_app(input_reader_ptr input_reader, map_ptr map,
   app->reduce_key_value_mappings.array = NULL;
   app->reduce_key_value_mappings.size = 0;
 
+  init_topology(app->proc_count);
+
   return app;
 
   rank_err: size_err: free(app);
