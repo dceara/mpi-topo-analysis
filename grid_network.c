@@ -5,13 +5,6 @@
  *      Author: take
  */
 
-/*
- * ring_network.c
- *
- *  Created on: Dec 2, 2009
- *      Author: take
- */
-
 #include <mpi.h>
 #include <stdlib.h>
 #include <string.h>
