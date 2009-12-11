@@ -95,9 +95,6 @@ static inline int get_parent(int root, int rank, int net_size)
   return -1;
 }
 
-#warning not sure if it works for proc_count != perfect square
-#warning implement incoming functions
-
 static inline int send_left(int root, int rank, int net_size, int outgoing)
 {
   if (COL(grid_size, rank) == 0)
@@ -319,8 +316,9 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
         current_index += sendcounts[i];
         continue;
       }
-      forward_message(root, rank, sendbuf + current_index, sendcounts[i], i,
-          net_size, i);
+      CHECK(forward_message(root, rank, sendbuf + current_index, sendcounts[i], i,
+              net_size, i) == 0,
+          err, "scatterv: Unable to forward message as root.\n");
       current_index += sendcounts[i];
     }
     /* Store local message. */
@@ -329,46 +327,57 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
     MPI_Status status;
 
     for (;;) {
-      MPI_Probe(parent_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(parent_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "scatterv: Unable to probe for message from parent.\n");
       if (status.MPI_TAG == SCATTER_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, parent_rank, SCATTER_TAG, MPI_COMM_WORLD,
-            MPI_STATUS_IGNORE);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, parent_rank, SCATTER_TAG, MPI_COMM_WORLD,
+                MPI_STATUS_IGNORE) == MPI_SUCCESS,
+            err, "scatterv: Unable to receive termination message from parent.\n")
         break;
       }
 
-      tmp = malloc(status._count * sizeof(*tmp));
-      MPI_Recv(tmp, status._count, MPI_BYTE, parent_rank, MPI_ANY_TAG,
-          MPI_COMM_WORLD, &status);
+      CHECK((tmp = realloc(tmp, status._count * sizeof(*tmp))) != NULL || status._count == 0,
+          err, "scatterv: Out of memory!\n");
+      CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, parent_rank, MPI_ANY_TAG,
+              MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "scatterv: Unable to receive scatterv message from parent.\n")
       if (status.MPI_TAG == rank) {
         memcpy(recvbuf, tmp, recvcount);
       } else {
-        forward_message(root, rank, tmp, status._count, status.MPI_TAG,
-            net_size, status.MPI_TAG);
+        CHECK(forward_message(root, rank, tmp, status._count, status.MPI_TAG,
+                net_size, status.MPI_TAG) == 0,
+            err, "scatterv: Unable to forward scatterv message.\n");
       }
-      free(tmp);
     }
 
   }
   /* Announce neighbours that scattering has ended. */
-  if (UP(grid_size, rank) != parent_rank && send_up(root, rank, net_size, 1)) {
-    MPI_Send(NULL, 0, MPI_BYTE, UP(grid_size, rank), SCATTER_TAG,
-        MPI_COMM_WORLD);
-  }
+  if (UP(grid_size, rank) != parent_rank && send_up(root, rank, net_size, 1))
+    CHECK(MPI_Send(NULL, 0, MPI_BYTE, UP(grid_size, rank), SCATTER_TAG,
+            MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "scatterv: Unable to send termination message upwards.\n");
+
   if (LEFT(grid_size, rank) != parent_rank
-      && send_left(root, rank, net_size, 1)) {
-    MPI_Send(NULL, 0, MPI_BYTE, LEFT(grid_size, rank), SCATTER_TAG,
-        MPI_COMM_WORLD);
-  }
+      && send_left(root, rank, net_size, 1))
+    CHECK(MPI_Send(NULL, 0, MPI_BYTE, LEFT(grid_size, rank), SCATTER_TAG,
+            MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "scatterv: Unable to send termination message to the left.\n");
+
   if (DOWN(grid_size, rank) != parent_rank
-      && send_down(root, rank, net_size, 1)) {
-    MPI_Send(NULL, 0, MPI_BYTE, DOWN(grid_size, rank), SCATTER_TAG,
-        MPI_COMM_WORLD);
-  }
+      && send_down(root, rank, net_size, 1))
+    CHECK(MPI_Send(NULL, 0, MPI_BYTE, DOWN(grid_size, rank), SCATTER_TAG,
+            MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "scatterv: Unable to send termination message downwards.\n");
+
   if (RIGHT(grid_size, rank) != parent_rank && send_right(root, rank, net_size,
-      1)) {
-    MPI_Send(NULL, 0, MPI_BYTE, RIGHT(grid_size, rank), SCATTER_TAG,
-        MPI_COMM_WORLD);
-  }
+      1))
+    CHECK(MPI_Send(NULL, 0, MPI_BYTE, RIGHT(grid_size, rank), SCATTER_TAG,
+            MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "scatterv: Unable to send termination message to the right.\n");
+
+  if (tmp != NULL)
+    free(tmp);
+
   return 0;
   err: if (tmp != NULL)
     free(tmp);
@@ -382,30 +391,32 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
   char* tmp = NULL;
   int parent_rank = get_parent(root, rank, net_size);
 
-  DBG_PRINT("rank %d: parent_rank = %d.\n", rank, parent_rank);
-
   if (rank != root)
-    tmp = malloc(sendcount * sizeof(*tmp));
+    CHECK((tmp = malloc(sendcount * sizeof(*tmp))) != NULL || sendcount == 0,
+        err, "gather: Out of memory!\n");
 
   if (send_up(root, rank, net_size, 1)) {
     int up = UP(grid_size, rank);
 
-    DBG_PRINT("rank %d: receiving gather messages from up.\n", rank);
-
     for (;;) {
-      MPI_Probe(up, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(up, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gather: Unable to probe message from up neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, up, GATHER_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, up, GATHER_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive termination message from up.\n");
         break;
       }
       if (root == rank) {
-        MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE, up,
-            MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE, up,
+                MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive gather message from up.\n");
       } else {
-        MPI_Recv(tmp, sendcount, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD,
-            &status);
-        MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD,
+                &status) == MPI_SUCCESS,
+            err, "gather: Unable to recieve gather message to forward from up.\n");
+        CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "gather: Unable to forward gather message to parent.\n");
       }
     }
   }
@@ -413,22 +424,25 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
   if (send_left(root, rank, net_size, 1)) {
     int left = LEFT(grid_size, rank);
 
-    DBG_PRINT("rank %d: receiving gather messages from left.\n", rank);
-
     for (;;) {
-      MPI_Probe(left, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(left, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gather: Unable to probe message from left neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, left, GATHER_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, left, GATHER_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive termination message from left.\n");
         break;
       }
       if (root == rank) {
-        MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE,
-            left, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE,
+                left, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive gather message from left.\n");
       } else {
-        MPI_Recv(tmp, sendcount, MPI_BYTE, left, MPI_ANY_TAG, MPI_COMM_WORLD,
-            &status);
-        MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, left, MPI_ANY_TAG, MPI_COMM_WORLD,
+                &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive gather message to forward from left.\n");
+        CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "gather: Unable to forward gather message to parent.\n");
       }
     }
   }
@@ -436,22 +450,25 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
   if (send_down(root, rank, net_size, 1)) {
     int down = DOWN(grid_size, rank);
 
-    DBG_PRINT("rank %d: receiving gather messages from down.\n", rank);
-
     for (;;) {
-      MPI_Probe(down, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(down, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gather: Unable to probe message from down neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, down, GATHER_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, down, GATHER_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive termination from down.\n");
         break;
       }
       if (root == rank) {
-        MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE,
-            down, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE,
+                down, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive gather message from down.\n");
       } else {
-        MPI_Recv(tmp, sendcount, MPI_BYTE, down, MPI_ANY_TAG, MPI_COMM_WORLD,
-            &status);
-        MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, down, MPI_ANY_TAG, MPI_COMM_WORLD,
+                &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive gather message to forward from down.\n");
+        CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "gather: Unable to forward gather message to parent.\n");
       }
     }
   }
@@ -459,40 +476,46 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
   if (send_right(root, rank, net_size, 1)) {
     int right = RIGHT(grid_size, rank);
 
-    DBG_PRINT("rank %d: receiving gather messages from right.\n", rank);
-
     for (;;) {
-      MPI_Probe(right, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(right, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gather: Unable to probe message from right neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, right, GATHER_TAG, MPI_COMM_WORLD, &status);
-        DBG_PRINT("rank %d: received termination message from right\n", rank);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, right, GATHER_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive termination message from right.\n");
         break;
-      }DBG_PRINT("rank %d: receiving gather message from right\n", rank);
+      }
       if (root == rank) {
-        MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE,
-            right, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(recvbuf + status.MPI_TAG * recvcount, recvcount, MPI_BYTE,
+                right, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive gather message from right.\n");
       } else {
-        MPI_Recv(tmp, sendcount, MPI_BYTE, right, MPI_ANY_TAG, MPI_COMM_WORLD,
-            &status);
-        MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, right, MPI_ANY_TAG, MPI_COMM_WORLD,
+                &status) == MPI_SUCCESS,
+            err, "gather: Unable to receive gather message to forward from right.\n");
+        CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "gather: Unable to forward gather message to parent.\n");
       }
     }
   }
 
   if (rank != root) {
-    DBG_PRINT("rank %d: sending own message to parent.\n", rank);
-    MPI_Send(sendbuf, sendcount, MPI_BYTE, parent_rank, rank, MPI_COMM_WORLD);
+    CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, parent_rank, rank, MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "gather: Unable to send gather message to parent.\n");
 
-    DBG_PRINT("rank %d: announcing parent of termination.\n", rank);
-    MPI_Send(NULL, 0, MPI_BYTE, parent_rank, GATHER_TAG, MPI_COMM_WORLD);
-    DBG_PRINT("rank %d: announced parent of termination.\n", rank);
+    CHECK(MPI_Send(NULL, 0, MPI_BYTE, parent_rank, GATHER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "gather: Unable to send termination message to parent.\n");
 
-    free(tmp);
+    if (tmp != NULL)
+      free(tmp);
   } else {
     memcpy(recvbuf + rank, sendbuf, recvcount);
   }
   return 0;
+
+  err: if (tmp != NULL)
+    free(tmp);
+  return 1;
 }
 
 static inline int get_offset(int index, const int* const counts)
@@ -512,28 +535,30 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
   char* tmp = NULL;
   int parent_rank = get_parent(root, rank, net_size);
 
-  DBG_PRINT("rank %d: parent_rank = %d.\n", rank, parent_rank);
-
   if (send_up(root, rank, net_size, 1)) {
     int up = UP(grid_size, rank);
 
-    DBG_PRINT("rank %d: receiving gather messages from up.\n", rank);
-
     for (;;) {
-      MPI_Probe(up, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(up, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gatherv: Unable to probe for message from up.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, up, GATHERV_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, up, GATHERV_TAG, MPI_COMM_WORLD, &status)== MPI_SUCCESS,
+            err, "gatherv: Unable to receive termination message from up.\n");
         break;
       }
       if (root == rank) {
-        MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
-            status._count, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
+                status._count, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive gatherv message from up.\n");
       } else {
-        tmp = realloc(tmp, status._count * sizeof(*tmp));
-        MPI_Recv(tmp, status._count, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD,
-            &status);
-        MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK((tmp = realloc(tmp, status._count * sizeof(*tmp))) != NULL || status._count == 0,
+            err, "gatherv: Out of memory!\n");
+        CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD,
+                &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive message from up.\n");
+        CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "gatherv: Unable to forward message to parent.\n");
       }
     }
   }
@@ -541,23 +566,27 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
   if (send_left(root, rank, net_size, 1)) {
     int left = LEFT(grid_size, rank);
 
-    DBG_PRINT("rank %d: receiving gather messages from left.\n", rank);
-
     for (;;) {
-      MPI_Probe(left, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(left, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gatherv: Unable to probe for message from left.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, left, GATHERV_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, left, GATHERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive ending message from left.\n");
         break;
       }
       if (root == rank) {
-        MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
-            status._count, MPI_BYTE, left, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
+                status._count, MPI_BYTE, left, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive gatherv message from left.\n");
       } else {
-        tmp = realloc(tmp, status._count * sizeof(*tmp));
-        MPI_Recv(tmp, status._count, MPI_BYTE, left, MPI_ANY_TAG,
-            MPI_COMM_WORLD, &status);
-        MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK((tmp = realloc(tmp, status._count * sizeof(*tmp))) != NULL || status._count == 0,
+            err, "gatherv: Out of memory!\n");
+        CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, left, MPI_ANY_TAG,
+                MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive message to forward from left.\n");
+        CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "gatherv: Unable to forward message to parent.\n");
       }
     }
   }
@@ -565,23 +594,27 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
   if (send_down(root, rank, net_size, 1)) {
     int down = DOWN(grid_size, rank);
 
-    DBG_PRINT("rank %d: receiving gather messages from down.\n", rank);
-
     for (;;) {
-      MPI_Probe(down, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(down, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gatherv: Unable to probe for message from down.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, down, GATHERV_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, down, GATHERV_TAG, MPI_COMM_WORLD, &status)== MPI_SUCCESS,
+            err, "gatherv: Unable to receive ending message from down.\n");
         break;
       }
       if (root == rank) {
-        MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
-            status._count, MPI_BYTE, down, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
+                status._count, MPI_BYTE, down, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive gatherv message from down.\n");
       } else {
-        tmp = realloc(tmp, status._count * sizeof(*tmp));
-        MPI_Recv(tmp, status._count, MPI_BYTE, down, MPI_ANY_TAG,
-            MPI_COMM_WORLD, &status);
-        MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK((tmp = realloc(tmp, status._count * sizeof(*tmp))) != NULL || status._count == 0,
+            err, "gatherv: Out of memory!\n");
+        CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, down, MPI_ANY_TAG,
+                MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive message to forward from down.\n");
+        CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "gatherv: Unable to forward message to parent.\n");
       }
     }
   }
@@ -590,32 +623,39 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int right = RIGHT(grid_size, rank);
 
     for (;;) {
-      MPI_Probe(right, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+      CHECK(MPI_Probe(right, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+          err, "gatherv: Unable to probe for message from right.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
-        MPI_Recv(NULL, 0, MPI_BYTE, right, GATHERV_TAG, MPI_COMM_WORLD, &status);
+        CHECK(MPI_Recv(NULL, 0, MPI_BYTE, right, GATHERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive ending message from right.\n");
         break;
       }
       if (root == rank) {
-        MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
-            status._count, MPI_BYTE, right, MPI_ANY_TAG, MPI_COMM_WORLD,
-            &status);
+        CHECK(MPI_Recv(recvbuf + get_offset(status.MPI_TAG, recvcounts),
+                status._count, MPI_BYTE, right, MPI_ANY_TAG, MPI_COMM_WORLD,
+                &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive gatherv message from right.\n");
       } else {
-        tmp = realloc(tmp, status._count * sizeof(*tmp));
-        MPI_Recv(tmp, status._count, MPI_BYTE, right, MPI_ANY_TAG,
-            MPI_COMM_WORLD, &status);
-        MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
-            MPI_COMM_WORLD);
+        CHECK((tmp = realloc(tmp, status._count * sizeof(*tmp))) != NULL || status._count == 0,
+            err, "gatherv: Out of memory!\n");
+        CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, right, MPI_ANY_TAG,
+                MPI_COMM_WORLD, &status) == MPI_SUCCESS,
+            err, "gatherv: Unable to receive message to forward from right.\n");
+        CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
+                MPI_COMM_WORLD)== MPI_SUCCESS,
+            err, "gatherv: Unable to forward message to parent.\n");
       }
     }
   }
 
   if (rank != root) {
-    DBG_PRINT("rank %d: sending own message to parent.\n", rank);
-    MPI_Send(sendbuf, sendcount, MPI_BYTE, parent_rank, rank, MPI_COMM_WORLD);
+    CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, parent_rank,
+            rank, MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "gatherv: Unable to send gatherv message to parent.\n");
 
-    DBG_PRINT("rank %d: announcing parent of termination.\n", rank);
-    MPI_Send(NULL, 0, MPI_BYTE, parent_rank, GATHERV_TAG, MPI_COMM_WORLD);
-    DBG_PRINT("rank %d: announced parent of termination.\n", rank);
+    CHECK(MPI_Send(NULL, 0, MPI_BYTE, parent_rank,
+            GATHERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "gatherv: Unable to send ending message to parent.\n");
 
     if (tmp != NULL)
       free(tmp);
@@ -623,30 +663,40 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     memcpy(recvbuf + get_offset(rank, recvcounts), sendbuf, recvcounts[rank]);
   }
   return 0;
+
+  err: if (tmp != NULL)
+    free(tmp);
+  return 1;
 }
 
 int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
 {
-#warning PERFORM CHECKS
-  if (rank != root) {
-    MPI_Recv(sendbuf, sendcount, MPI_INT, MPI_ANY_SOURCE, BCAST_TAG,
-        MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  }
-  if (send_up(root, rank, net_size, 1)) {
-    MPI_Send(sendbuf, sendcount, MPI_BYTE, UP(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD);
-  }
-  if (send_left(root, rank, net_size, 1)) {
-    MPI_Send(sendbuf, sendcount, MPI_BYTE, LEFT(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD);
-  }
-  if (send_down(root, rank, net_size, 1)) {
-    MPI_Send(sendbuf, sendcount, MPI_BYTE, DOWN(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD);
-  }
-  if (send_right(root, rank, net_size, 1)) {
-    MPI_Send(sendbuf, sendcount, MPI_BYTE, RIGHT(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD);
-  }
+  if (rank != root)
+    CHECK(MPI_Recv(sendbuf, sendcount, MPI_INT, MPI_ANY_SOURCE, BCAST_TAG,
+        MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
+        err, "broadcast: Unable to receive broadcast message.\n");
+
+  if (send_up(root, rank, net_size, 1))
+    CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, UP(grid_size, rank), BCAST_TAG,
+        MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "broadcast: Unable to send broadcast message up.\n");
+
+  if (send_left(root, rank, net_size, 1))
+    CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, LEFT(grid_size, rank), BCAST_TAG,
+        MPI_COMM_WORLD) == MPI_SUCCESS,
+            err, "broadcast: Unable to send broadcast message left.\n");
+
+  if (send_down(root, rank, net_size, 1))
+    CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, DOWN(grid_size, rank), BCAST_TAG,
+        MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "broadcast: Unable to send broadcast message down.\n");
+
+  if (send_right(root, rank, net_size, 1))
+    CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, RIGHT(grid_size, rank), BCAST_TAG,
+        MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "broadcast: Unable to send broadcast message right.\n");
   return 0;
+
+  err:
+  return 1;
 }
