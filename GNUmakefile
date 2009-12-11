@@ -40,7 +40,16 @@ map_reduce.o: map_reduce.c map_reduce.h utils.h
 
 main.o: main.c map_reduce.h utils.h
 
-clean:
-	rm -f ring
-	rm -f default
+clean: clean_grid clean_ring clean_default
+
+clean_obj:
 	rm -f *.o
+
+clean_grid: clean_obj
+	rm -f grid
+	
+clean_ring: clean_obj
+	rm -f ring
+
+clean_default: clean_obj
+	rm -f default
