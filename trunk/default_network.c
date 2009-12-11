@@ -14,6 +14,11 @@
 #include "utils.h"
 #include "network.h"
 
+int init_topology(int proc_count)
+{
+  return 0;
+}
+
 int scatter(int root, int rank, int net_size, void* sendbuf, int size,
     void* recvbuf, int recvcount)
 {

@@ -23,7 +23,7 @@
 #if APPLICATION == WORD_COUNTING
 /* 1MB input chunks */
 //#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
-#define INPUT_VALUE_MAX_SIZE 16
+#define INPUT_VALUE_MAX_SIZE 32
 /* 512 bytes words */
 #define MAP_KEY_MAX_SIZE 512
 /* The map value is a counter. */

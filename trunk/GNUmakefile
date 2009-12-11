@@ -5,25 +5,30 @@ APP=WORD_COUNTING
 #APP=DISTRIBUTED_GREP
 
 #debugging CFLAGS
-DEBUG=-DDEBUG
+#DEBUG=-DDEBUG
 #release
-#DEBUG=-UDEBUG
+DEBUG=-UDEBUG
 
-CFLAGS=-Wall -DAPPLICATION=$(APP) $(DEBUG)
+CFLAGS=-Wall -lm -DAPPLICATION=$(APP) $(DEBUG)
 
-all: default ring test
+all: default ring grid test
 
-test: test.o ring_network.o
+test: test.o grid_network.o
 
 test.o: test.c
 
 default: default_network.o network.o map_reduce.o map_reduce_utils.o main.o
 	$(CC) -o $@ $(CFLAGS) $^
-	
+		
 ring: ring_network.o network.o map_reduce.o map_reduce_utils.o main.o
+	$(CC) -o $@ $(CFLAGS) $^
+	
+grid: grid_network.o network.o map_reduce.o map_reduce_utils.o main.o
 	$(CC) -o $@ $(CFLAGS) $^
 
 ring_network.o: ring_network.c network.h utils.h
+
+grid_network.o: grid_network.c network.h utils.h
 
 default_network.o: default_network.c network.h utils.h
 

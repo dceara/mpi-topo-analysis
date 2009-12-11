@@ -32,6 +32,8 @@ int get_network_rank(int* rank);
  */
 int finalize_network();
 
+int init_topology(int proc_count);
+
 /*
  * A wrapper for the MPI_Scatter function.
  * root - the rank of the sending task
