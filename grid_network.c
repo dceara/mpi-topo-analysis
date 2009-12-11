@@ -259,7 +259,8 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
               status.MPI_TAG) == MPI_SUCCESS,
           err, "scatter: Unable to forward scatter message.\n");
     }
-    free(tmp);
+    if (tmp != NULL)
+      free(tmp);
   }
   /* Announce neighbours that scattering has ended. */
   if (UP(grid_size, rank) != parent_rank && send_up(root, rank, net_size, 1))
@@ -666,30 +667,29 @@ int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
 {
   if (rank != root)
     CHECK(MPI_Recv(sendbuf, sendcount, MPI_INT, MPI_ANY_SOURCE, BCAST_TAG,
-        MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
+            MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
         err, "broadcast: Unable to receive broadcast message.\n");
 
   if (send_up(root, rank, net_size, 1))
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, UP(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD) == MPI_SUCCESS,
-            err, "broadcast: Unable to send broadcast message up.\n");
+            MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "broadcast: Unable to send broadcast message up.\n");
 
   if (send_left(root, rank, net_size, 1))
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, LEFT(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD) == MPI_SUCCESS,
-            err, "broadcast: Unable to send broadcast message left.\n");
+            MPI_COMM_WORLD) == MPI_SUCCESS,
+        err, "broadcast: Unable to send broadcast message left.\n");
 
   if (send_down(root, rank, net_size, 1))
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, DOWN(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD) == MPI_SUCCESS,
+            MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "broadcast: Unable to send broadcast message down.\n");
 
   if (send_right(root, rank, net_size, 1))
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, RIGHT(grid_size, rank), BCAST_TAG,
-        MPI_COMM_WORLD) == MPI_SUCCESS,
+            MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "broadcast: Unable to send broadcast message right.\n");
   return 0;
 
-  err:
-  return 1;
+  err: return 1;
 }
