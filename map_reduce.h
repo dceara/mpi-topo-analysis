@@ -8,6 +8,8 @@
 #ifndef MAP_REDUCE_H
 #define MAP_REDUCE_H
 
+#include "perf_eval.h"
+
 #define MASTER_RANK 0
 
 /*
@@ -19,8 +21,6 @@
  */
 #define WORD_COUNTING 1
 #define DISTRIBUTED_GREP 2
-
-#include "perf_eval.h"
 
 #if APPLICATION == WORD_COUNTING
 /* 1MB input chunks */
