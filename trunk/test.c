@@ -7,6 +7,7 @@
 #include <mpi.h>
 #include "network.h"
 #include "utils.h"
+#include "perf_eval.h"
 
 #define SIZE 17
 #define ROOT 0
@@ -20,6 +21,7 @@ int main(int argc, char** argv)
   int sizes[SIZE] =
   { 1, 1, 1, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
   int i;
+  PE* pe;
 
   int get_offset(int rank)
   {
@@ -37,22 +39,24 @@ int main(int argc, char** argv)
 
   init_topology(size);
 
+  pe = init_perf_eval(rank);
+
   for (i = 0; i < 10000; ++i) {
     if (rank == i % size) {
-      PRINT("rank %d: Calling scatter as root i = %d.\n", rank, i);
-      //gatherv(rank, rank, size, value + get_offset(rank), sizes[rank], buf, sizes, size);
-      gather(i % size, rank, size, value + rank, 1, buf, 1);
-      //scatterv(i % size, rank, size, value, sizes, buf, sizes[rank], size);
-      //scatter(rank, rank, size, value, 1, buf, 1);
-      //broadcast(rank, rank, size, value, SIZE);
+      PRINT("rank %d: Calling gather as root i = %d.\n", rank, i);
+      gatherv(i % size, rank, size, value + get_offset(rank), sizes[rank], buf, sizes, size, pe);
+      gather(i % size, rank, size, value + rank, 1, buf, 1, pe);
+      scatterv(i % size, rank, size, value, sizes, buf, sizes[rank], size, pe);
+      scatter(i % size, rank, size, value, 1, buf, 1, pe);
+      broadcast(i % size, rank, size, value, SIZE, pe);
       PRINT("rank %d: I received the value: %s i = %d.\n", rank, buf, i);
     } else {
-      PRINT("rank %d: Calling scatter as non-root i = %d.\n", rank, i);
-      //gatherv(ROOT, rank, size, value + get_offset(rank), sizes[rank], NULL, NULL, size);
-      gather(i % size, rank, size, value + rank, 1, NULL, 0);
-      //scatterv(i % size, rank, size, NULL, NULL, buf, sizes[rank], size);
-      //scatter(i % size, rank, size, NULL, 0, buf, 1);
-      //broadcast(0, rank, size, buf, SIZE);
+      PRINT("rank %d: Calling gather as non-root i = %d.\n", rank, i);
+      gatherv(i % size, rank, size, value + get_offset(rank), sizes[rank], NULL, NULL, size, pe);
+      gather(i % size, rank, size, value + rank, 1, NULL, 0, pe);
+      scatterv(i % size, rank, size, NULL, NULL, buf, sizes[rank], size, pe);
+      scatter(i % size, rank, size, NULL, 0, buf, 1, pe);
+      broadcast(i % size, rank, size, buf, SIZE, pe);
       //PRINT("rank %d: I received the value: %s i = %d.\n", rank, buf, i);
     }
     //PRINT("rank %d: i = %d\n", rank, i);
