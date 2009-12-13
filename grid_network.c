@@ -142,7 +142,7 @@ static inline int send_down(int root, int rank, int net_size, int outgoing)
 }
 
 static inline int forward_message(int root, int rank, char* message, int size,
-    int tag, int net_size, int dest)
+    int tag, int net_size, int dest, PE* pe)
 {
   int col = COL(grid_size, rank);
   int row = ROW(grid_size, rank);
@@ -152,6 +152,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
   if (DIST(grid_size, root, rank) % 2 != 0) {
     if (dest_row < row && abs(dest_col - col) < abs(dest_row - row)) {
       if (send_up(root, rank, net_size, 1)) {
+        pe_send_message(pe, UP(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, UP(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message up.\n");
@@ -160,6 +161,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
     }
     if (dest_col < col && abs(dest_row - row) <= abs(dest_col - col)) {
       if (send_left(root, rank, net_size, 1)) {
+        pe_send_message(pe, LEFT(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, LEFT(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message left.\n");
@@ -168,6 +170,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
     }
     if (dest_row > row && abs(dest_col - col) < abs(dest_row - row)) {
       if (send_down(root, rank, net_size, 1)) {
+        pe_send_message(pe, DOWN(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, DOWN(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message down.\n");
@@ -176,6 +179,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
     }
     if (dest_col > col && abs(dest_row - row) <= abs(dest_col - col)) {
       if (send_right(root, rank, net_size, 1)) {
+        pe_send_message(pe, RIGHT(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, RIGHT(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message right.\n");
@@ -185,6 +189,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
   } else {
     if (dest_row < row && abs(dest_col - col) <= abs(dest_row - row)) {
       if (send_up(root, rank, net_size, 1)) {
+        pe_send_message(pe, UP(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, UP(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message up.\n");
@@ -193,6 +198,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
     }
     if (dest_col < col && abs(dest_row - row) < abs(dest_col - col)) {
       if (send_left(root, rank, net_size, 1)) {
+        pe_send_message(pe, LEFT(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, LEFT(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message left.\n");
@@ -201,6 +207,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
     }
     if (dest_row > row && abs(dest_col - col) <= abs(dest_row - row)) {
       if (send_down(root, rank, net_size, 1)) {
+        pe_send_message(pe, DOWN(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, DOWN(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message down.\n");
@@ -209,6 +216,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
     }
     if (dest_col > col && abs(dest_row - row) < abs(dest_col - col)) {
       if (send_right(root, rank, net_size, 1)) {
+        pe_send_message(pe, RIGHT(grid_size, rank), size);
         CHECK(MPI_Send(message, size, MPI_BYTE, RIGHT(grid_size, rank), dest,
                 MPI_COMM_WORLD) == MPI_SUCCESS, err,
             "forward_message: Unable to forward message right.\n");
@@ -221,7 +229,7 @@ static inline int forward_message(int root, int rank, char* message, int size,
 }
 
 int scatter(int root, int rank, int net_size, void* sendbuf, int size,
-    void* recvbuf, int recvcount)
+    void* recvbuf, int recvcount, PE* pe)
 {
   int i;
   char* tmp = NULL;
@@ -231,7 +239,7 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
     for (i = 0; i < net_size; ++i) {
       if (i == rank)
         continue;
-      CHECK(forward_message(root, rank, sendbuf + i * size, size, i, net_size, i) == 0,
+      CHECK(forward_message(root, rank, sendbuf + i * size, size, i, net_size, i, pe) == 0,
           err, "scatter: Unable to forward message as root.\n");
     }
     /* Store local message. */
@@ -242,6 +250,7 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
     CHECK((tmp = malloc(size * sizeof(*tmp))) != NULL || size != 0,
         err, "scatter: Out of memory!\n");
     for (;;) {
+      pe_recv_message(pe, parent_rank, MPI_ANY_TAG);
       CHECK(MPI_Probe(parent_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "scatter: Unable to probe the network for messages from parent\n");
       if (status.MPI_TAG == SCATTER_TAG) {
@@ -256,36 +265,43 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
       if (status.MPI_TAG == rank)
         memcpy(recvbuf, tmp, recvcount);
       else CHECK(forward_message(root, rank, tmp, recvcount, status.MPI_TAG, net_size,
-              status.MPI_TAG) == MPI_SUCCESS,
+              status.MPI_TAG, pe) == MPI_SUCCESS,
           err, "scatter: Unable to forward scatter message.\n");
     }
     if (tmp != NULL)
       free(tmp);
   }
   /* Announce neighbours that scattering has ended. */
-  if (UP(grid_size, rank) != parent_rank && send_up(root, rank, net_size, 1))
+  if (UP(grid_size, rank) != parent_rank && send_up(root, rank, net_size, 1)) {
+    pe_send_message(pe, UP(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, UP(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatter: Unable to announce up neighbor of termination.\n");
+  }
 
   if (LEFT(grid_size, rank) != parent_rank
-      && send_left(root, rank, net_size, 1))
+      && send_left(root, rank, net_size, 1)) {
+    pe_send_message(pe, LEFT(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, LEFT(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatter: Unable to announce left neighbor of termination.\n");
+  }
 
   if (DOWN(grid_size, rank) != parent_rank
-      && send_down(root, rank, net_size, 1))
+      && send_down(root, rank, net_size, 1)) {
+    pe_send_message(pe, DOWN(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, DOWN(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatter: Unable to announce down neighbor of termination.\n");
+  }
 
   if (RIGHT(grid_size, rank) != parent_rank && send_right(root, rank, net_size,
-      1))
+      1)) {
+    pe_send_message(pe, RIGHT(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, RIGHT(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatter: Unable to announce right neighbor of termination.\n");
-
+  }
   return 0;
 
   err: if (tmp != NULL)
@@ -294,7 +310,7 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
 }
 
 int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
-    void* recvbuf, int recvcount, int groupsize)
+    void* recvbuf, int recvcount, int groupsize, PE* pe)
 {
   int i;
   int parent_rank = get_parent(root, rank, net_size);
@@ -311,7 +327,7 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
         continue;
       }
       CHECK(forward_message(root, rank, sendbuf + current_index, sendcounts[i], i,
-              net_size, i) == 0,
+              net_size, i, pe) == 0,
           err, "scatterv: Unable to forward message as root.\n");
       current_index += sendcounts[i];
     }
@@ -321,6 +337,7 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
     MPI_Status status;
 
     for (;;) {
+      pe_recv_message(pe, parent_rank, MPI_ANY_TAG);
       CHECK(MPI_Probe(parent_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "scatterv: Unable to probe for message from parent.\n");
       if (status.MPI_TAG == SCATTER_TAG) {
@@ -339,35 +356,43 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
         memcpy(recvbuf, tmp, recvcount);
       } else {
         CHECK(forward_message(root, rank, tmp, status._count, status.MPI_TAG,
-                net_size, status.MPI_TAG) == 0,
+                net_size, status.MPI_TAG, pe) == 0,
             err, "scatterv: Unable to forward scatterv message.\n");
       }
     }
 
   }
   /* Announce neighbours that scattering has ended. */
-  if (UP(grid_size, rank) != parent_rank && send_up(root, rank, net_size, 1))
+  if (UP(grid_size, rank) != parent_rank && send_up(root, rank, net_size, 1)) {
+    pe_send_message(pe, UP(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, UP(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatterv: Unable to send termination message upwards.\n");
+  }
 
   if (LEFT(grid_size, rank) != parent_rank
-      && send_left(root, rank, net_size, 1))
+      && send_left(root, rank, net_size, 1)) {
+    pe_send_message(pe, LEFT(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, LEFT(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatterv: Unable to send termination message to the left.\n");
+  }
 
   if (DOWN(grid_size, rank) != parent_rank
-      && send_down(root, rank, net_size, 1))
+      && send_down(root, rank, net_size, 1)) {
+    pe_send_message(pe, DOWN(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, DOWN(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatterv: Unable to send termination message downwards.\n");
+  }
 
   if (RIGHT(grid_size, rank) != parent_rank && send_right(root, rank, net_size,
-      1))
+      1)) {
+    pe_send_message(pe, RIGHT(grid_size, rank), 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, RIGHT(grid_size, rank), SCATTER_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "scatterv: Unable to send termination message to the right.\n");
+  }
 
   if (tmp != NULL)
     free(tmp);
@@ -379,7 +404,7 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
 }
 
 int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int recvcount)
+    void* recvbuf, int recvcount, PE* pe)
 {
   MPI_Status status;
   char* tmp = NULL;
@@ -393,6 +418,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int up = UP(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, up, MPI_ANY_TAG);
       CHECK(MPI_Probe(up, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gather: Unable to probe message from up neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
@@ -408,6 +434,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD,
                 &status) == MPI_SUCCESS,
             err, "gather: Unable to recieve gather message to forward from up.\n");
+        pe_send_message(pe, parent_rank, sendcount);
         CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD) == MPI_SUCCESS,
             err, "gather: Unable to forward gather message to parent.\n");
@@ -419,6 +446,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int left = LEFT(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, left, MPI_ANY_TAG);
       CHECK(MPI_Probe(left, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gather: Unable to probe message from left neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
@@ -434,6 +462,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, left, MPI_ANY_TAG, MPI_COMM_WORLD,
                 &status) == MPI_SUCCESS,
             err, "gather: Unable to receive gather message to forward from left.\n");
+        pe_send_message(pe, parent_rank, sendcount);
         CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD) == MPI_SUCCESS,
             err, "gather: Unable to forward gather message to parent.\n");
@@ -445,6 +474,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int down = DOWN(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, down, MPI_ANY_TAG);
       CHECK(MPI_Probe(down, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gather: Unable to probe message from down neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
@@ -460,6 +490,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, down, MPI_ANY_TAG, MPI_COMM_WORLD,
                 &status) == MPI_SUCCESS,
             err, "gather: Unable to receive gather message to forward from down.\n");
+        pe_send_message(pe, parent_rank, sendcount);
         CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD) == MPI_SUCCESS,
             err, "gather: Unable to forward gather message to parent.\n");
@@ -471,6 +502,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int right = RIGHT(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, right, MPI_ANY_TAG);
       CHECK(MPI_Probe(right, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gather: Unable to probe message from right neighbor.\n");
       if (status.MPI_TAG == GATHER_TAG) {
@@ -486,6 +518,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, right, MPI_ANY_TAG, MPI_COMM_WORLD,
                 &status) == MPI_SUCCESS,
             err, "gather: Unable to receive gather message to forward from right.\n");
+        pe_send_message(pe, parent_rank, sendcount);
         CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD) == MPI_SUCCESS,
             err, "gather: Unable to forward gather message to parent.\n");
@@ -494,9 +527,11 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
   }
 
   if (rank != root) {
+    pe_send_message(pe, parent_rank, sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, parent_rank, rank, MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "gather: Unable to send gather message to parent.\n");
 
+    pe_send_message(pe, parent_rank, 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, parent_rank, GATHER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "gather: Unable to send termination message to parent.\n");
 
@@ -523,7 +558,7 @@ static inline int get_offset(int index, const int* const counts)
 }
 
 int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int* recvcounts, int groupsize)
+    void* recvbuf, int* recvcounts, int groupsize, PE* pe)
 {
   MPI_Status status;
   char* tmp = NULL;
@@ -533,6 +568,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int up = UP(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, up, MPI_ANY_TAG);
       CHECK(MPI_Probe(up, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gatherv: Unable to probe for message from up.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
@@ -550,6 +586,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, up, MPI_ANY_TAG, MPI_COMM_WORLD,
                 &status) == MPI_SUCCESS,
             err, "gatherv: Unable to receive message from up.\n");
+        pe_send_message(pe, parent_rank, status._count);
         CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD) == MPI_SUCCESS,
             err, "gatherv: Unable to forward message to parent.\n");
@@ -561,6 +598,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int left = LEFT(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, left, MPI_ANY_TAG);
       CHECK(MPI_Probe(left, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gatherv: Unable to probe for message from left.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
@@ -578,6 +616,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, left, MPI_ANY_TAG,
                 MPI_COMM_WORLD, &status) == MPI_SUCCESS,
             err, "gatherv: Unable to receive message to forward from left.\n");
+        pe_send_message(pe, parent_rank, status._count);
         CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD) == MPI_SUCCESS,
             err, "gatherv: Unable to forward message to parent.\n");
@@ -589,6 +628,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int down = DOWN(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, down, MPI_ANY_TAG);
       CHECK(MPI_Probe(down, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gatherv: Unable to probe for message from down.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
@@ -606,6 +646,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, down, MPI_ANY_TAG,
                 MPI_COMM_WORLD, &status) == MPI_SUCCESS,
             err, "gatherv: Unable to receive message to forward from down.\n");
+        pe_send_message(pe, parent_rank, status._count);
         CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD) == MPI_SUCCESS,
             err, "gatherv: Unable to forward message to parent.\n");
@@ -617,6 +658,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int right = RIGHT(grid_size, rank);
 
     for (;;) {
+      pe_recv_message(pe, right, MPI_ANY_TAG);
       CHECK(MPI_Probe(right, MPI_ANY_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gatherv: Unable to probe for message from right.\n");
       if (status.MPI_TAG == GATHERV_TAG) {
@@ -635,6 +677,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
         CHECK(MPI_Recv(tmp, status._count, MPI_BYTE, right, MPI_ANY_TAG,
                 MPI_COMM_WORLD, &status) == MPI_SUCCESS,
             err, "gatherv: Unable to receive message to forward from right.\n");
+        pe_send_message(pe, parent_rank, status._count);
         CHECK(MPI_Send(tmp, status._count, MPI_BYTE, parent_rank, status.MPI_TAG,
                 MPI_COMM_WORLD)== MPI_SUCCESS,
             err, "gatherv: Unable to forward message to parent.\n");
@@ -643,10 +686,12 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
   }
 
   if (rank != root) {
+    pe_send_message(pe, parent_rank, sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, parent_rank,
             rank, MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "gatherv: Unable to send gatherv message to parent.\n");
 
+    pe_send_message(pe, parent_rank, 0);
     CHECK(MPI_Send(NULL, 0, MPI_BYTE, parent_rank,
             GATHERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "gatherv: Unable to send ending message to parent.\n");
@@ -663,32 +708,42 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
   return 1;
 }
 
-int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
+int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount, PE* pe)
 {
-  if (rank != root)
+  if (rank != root) {
+    pe_recv_message(pe, MPI_ANY_SOURCE, BCAST_TAG);
     CHECK(MPI_Recv(sendbuf, sendcount, MPI_INT, MPI_ANY_SOURCE, BCAST_TAG,
             MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
         err, "broadcast: Unable to receive broadcast message.\n");
+  }
 
-  if (send_up(root, rank, net_size, 1))
+  if (send_up(root, rank, net_size, 1)) {
+    pe_send_message(pe, UP(grid_size, rank), sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, UP(grid_size, rank), BCAST_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "broadcast: Unable to send broadcast message up.\n");
+  }
 
-  if (send_left(root, rank, net_size, 1))
+  if (send_left(root, rank, net_size, 1)) {
+    pe_send_message(pe, LEFT(grid_size, rank), sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, LEFT(grid_size, rank), BCAST_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "broadcast: Unable to send broadcast message left.\n");
+  }
 
-  if (send_down(root, rank, net_size, 1))
+  if (send_down(root, rank, net_size, 1)) {
+    pe_send_message(pe, DOWN(grid_size, rank), sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, DOWN(grid_size, rank), BCAST_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "broadcast: Unable to send broadcast message down.\n");
+  }
 
-  if (send_right(root, rank, net_size, 1))
+  if (send_right(root, rank, net_size, 1)) {
+    pe_send_message(pe, RIGHT(grid_size, rank), sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, RIGHT(grid_size, rank), BCAST_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "broadcast: Unable to send broadcast message right.\n");
+  }
   return 0;
 
   err: return 1;

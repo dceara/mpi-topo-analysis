@@ -20,7 +20,7 @@ int init_topology(int proc_count)
 }
 
 int scatter(int root, int rank, int net_size, void* sendbuf, int size,
-    void* recvbuf, int recvcount)
+    void* recvbuf, int recvcount, PE* pe)
 {
   CHECK(MPI_Scatter(sendbuf, size, MPI_BYTE, recvbuf, recvcount, MPI_BYTE,
           root, MPI_COMM_WORLD) == MPI_SUCCESS,
@@ -31,7 +31,7 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
 }
 
 int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
-    void* recvbuf, int recvcount, int groupsize)
+    void* recvbuf, int recvcount, int groupsize, PE* pe)
 {
   int* displ;
   int i, index;
@@ -55,7 +55,7 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
 }
 
 int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int recvcount)
+    void* recvbuf, int recvcount, PE* pe)
 {
   CHECK(MPI_Gather(sendbuf, sendcount, MPI_BYTE,
           recvbuf, recvcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
@@ -66,7 +66,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
 }
 
 int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int* recvcounts, int groupsize)
+    void* recvbuf, int* recvcounts, int groupsize, PE* pe)
 {
   int* displ;
   int i;
@@ -91,7 +91,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
   alloc_err: return 1;
 }
 
-int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
+int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount, PE* pe)
 {
   CHECK(MPI_Bcast(sendbuf, sendcount, MPI_BYTE, root, MPI_COMM_WORLD) == MPI_SUCCESS,
       bcast_err, "broadcast: Error when calling MPI_Bcast.\n");

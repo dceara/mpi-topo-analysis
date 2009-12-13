@@ -8,6 +8,8 @@
 #ifndef NETWORK_H_
 #define NETWORK_H_
 
+#include "perf_eval.h"
+
 /*
  * Initializes the network layer. Requires pointers to the command line arguments
  * received by the application.
@@ -47,7 +49,7 @@ int init_topology(int proc_count);
  * The function implementation is dependent on the virtual topology being used.
  */
 int scatter(int root, int rank, int net_size, void* sendbuf, int size,
-    void* recvbuf, int recvcount);
+    void* recvbuf, int recvcount, PE* pe);
 
 /*
  * A wrapper for the MPI_Scatterv function.
@@ -62,7 +64,7 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
  * The function implementation is dependent on the virtual topology being used.
  */
 int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
-    void* recvbuf, int recvcount, int groupsize);
+    void* recvbuf, int recvcount, int groupsize, PE* pe);
 
 /*
  * A wrapper for the MPI_Gather function.
@@ -77,7 +79,7 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
  * The function implementation is dependent on the virtual topology being used.
  */
 int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int recvcount);
+    void* recvbuf, int recvcount, PE* pe);
 
 /*
  * A wrapper for the MPI_Gatherv function.
@@ -92,7 +94,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
  * The function implementation is dependent on the virtual topology being used.
  */
 int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int* recvcounts, int groupsize);
+    void* recvbuf, int* recvcounts, int groupsize, PE* pe);
 
 /*
  * A wrapper for the MPI_Bcast function.
@@ -104,6 +106,6 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
  *
  * The function implementation is dependent on the virtual topology being used.
  */
-int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount);
+int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount, PE* pe);
 
 #endif /* NETWORK_H_ */

@@ -20,10 +20,12 @@
 #define WORD_COUNTING 1
 #define DISTRIBUTED_GREP 2
 
+#include "perf_eval.h"
+
 #if APPLICATION == WORD_COUNTING
 /* 1MB input chunks */
 //#define INPUT_VALUE_MAX_SIZE (1024 * 1024)
-#define INPUT_VALUE_MAX_SIZE 32
+#define INPUT_VALUE_MAX_SIZE 1024
 /* 512 bytes words */
 #define MAP_KEY_MAX_SIZE 512
 /* The map value is a counter. */
@@ -151,7 +153,7 @@ typedef MapPair* (*map_ptr)(InputPair* input_pair, int* results_cnt);
  * Returns a list of map values on success, NULL otherwise.
  */
 typedef MV
-* (*reduce_ptr)(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt);
+* (*reduce_ptr)(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt, int* reduce_key_cnt);
 
 typedef struct map_reduce MapReduce;
 
@@ -168,6 +170,8 @@ struct map_reduce
   int proc_count;
   int rank;
   const char* input_filename;
+
+  PE* pe;
 
   MapKeyWorkerPairArray map_key_worker_mappings;
   MapKeyValuePairArray map_key_value_mappings;

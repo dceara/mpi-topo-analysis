@@ -15,6 +15,8 @@
 #include "map_reduce.h"
 #include "utils.h"
 
+#define MAX_INPUT_FILENAME_SZ 512
+
 #if APPLICATION == WORD_COUNTING
 /* We make the assumption that the input file contains "only" visible characters. */
 int input_reader(const char* filename, int worker_count, InputPair* result)
@@ -85,7 +87,7 @@ MapPair* map(InputPair* input_pair, int* results_cnt)
       // TODO check overflows
       str_len = strlen(token);
       key_size = str_len <= MAP_KEY_MAX_SIZE - 1 ? str_len : MAP_KEY_MAX_SIZE
-          - 1;
+      - 1;
       strncpy(results[*results_cnt - 1].key.word, token, key_size);
       results[*results_cnt - 1].key.word[key_size] = 0;
       results[*results_cnt - 1].val.counter = 1;
@@ -101,23 +103,25 @@ MapPair* map(InputPair* input_pair, int* results_cnt)
 int map_key_compare(const MK* first, const MK* second)
 {
   if (first == NULL && second == NULL)
-    return 0;
+  return 0;
   if (first == NULL && second != NULL)
-    return -1;
+  return -1;
   if (first != NULL && second == NULL)
-    return 1;
+  return 1;
 
   return strncmp(first->word, second->word, MAP_KEY_MAX_SIZE - 1);
 }
 
-MV* reduce(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt)
+MV* reduce(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt, int* reduce_key_cnt)
 {
   int i;
+  *reduce_key_cnt = 0;
 
   int total = 0;
   for (i = 0; i < total_cnt; ++i) {
     if (map_key_compare(key_to_reduce, &all_values[i].key) == 0) {
       total += all_values[i].val.counter;
+      *reduce_key_cnt = *reduce_key_cnt + 1;
     }
   }
   PRINT("Reduce result: for key: %s -> value %d.\n", key_to_reduce->word, total);
@@ -155,7 +159,7 @@ int input_reader(const char* filename, int worker_count, InputPair* result)
   open_err: return -1;
 }
 
-const char pattern[] = "pattern";
+const char pattern[] = "meandering";
 
 MapPair* map(InputPair* input_pair, int* results_cnt)
 {
@@ -200,24 +204,26 @@ MapPair* map(InputPair* input_pair, int* results_cnt)
 int map_key_compare(const MK* first, const MK* second)
 {
   if (first == NULL && second == NULL)
-      return 0;
-    if (first == NULL && second != NULL)
-      return -1;
-    if (first != NULL && second == NULL)
-      return 1;
+  return 0;
+  if (first == NULL && second != NULL)
+  return -1;
+  if (first != NULL && second == NULL)
+  return 1;
 
-    return strncmp(first->line, second->line, MAP_KEY_MAX_SIZE - 1);
+  return strncmp(first->line, second->line, MAP_KEY_MAX_SIZE - 1);
 }
 
-MV* reduce(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt)
+MV* reduce(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt, int* reduce_key_cnt)
 {
   int i;
 
+  *reduce_key_cnt = 0;
   PRINT("Worker %d: Reduce result: \n", worker);
 
   for (i = 0; i < total_cnt; ++i) {
     if (map_key_compare(key_to_reduce, &all_values[i].key) == 0) {
       PRINT("\t%s\n", all_values[i].key.line);
+      *reduce_key_cnt = *reduce_key_cnt + 1;
     }
   }
   return 0;
@@ -226,25 +232,29 @@ MV* reduce(int worker, MK* key_to_reduce, MapPair* all_values, int total_cnt)
 
 int main(int argc, char** argv)
 {
-  MapReduce* app;
+  MapReduce* app = NULL;
 
+  CHECK(argc == 2, err, "usage: %s input_filename\n", argv[0]);
+  CHECK(strlen(argv[1]) < MAX_INPUT_FILENAME_SZ, err,
+      "main: filename too big: limit = %d.\n", MAX_INPUT_FILENAME_SZ);
   PRINT("Creating map reduce application... \n");
   CHECK((app = create_map_reduce_app(input_reader, map, map_key_compare, reduce,
-              &argc, &argv, "input.txt")) != NULL, app_err,
+              &argc, &argv, argv[1])) != NULL, err,
       "Unable to create map reduce application\n");
 
   if (is_master(app)) {
     PRINT("Calling master function... \n");
-    CHECK(master(app) == 0, master_err, "Master function failed!\n");
+    CHECK(master(app) == 0, err, "Master function failed!\n");
   } else {
     PRINT("Calling worker function... \n");
-    CHECK(worker(app) == 0, worker_err, "Worker function failed!\n");
+    CHECK(worker(app) == 0, err, "Worker function failed!\n");
   }
 
   destroy_map_reduce_app(app);
   exit(EXIT_SUCCESS);
 
-  worker_err: master_err: destroy_map_reduce_app(app);
-  app_err: exit(EXIT_FAILURE);
+  err: if (app != NULL)
+    destroy_map_reduce_app(app);
+  exit(EXIT_FAILURE);
 }
 

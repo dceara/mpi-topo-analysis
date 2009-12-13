@@ -23,15 +23,18 @@ int init_topology(int proc_count)
 }
 
 int scatter(int root, int rank, int net_size, void* sendbuf, int size,
-    void* recvbuf, int recvcount)
+    void* recvbuf, int recvcount, PE* pe)
 {
   int i;
   int next = (rank + 1) % net_size;
+
+  pe_start_scatter(pe);
 
   if (root == rank) {
     for (i = net_size - 1; i >= 1; --i) {
       int next_index = (rank + i) % net_size;
 
+      pe_send_message(pe, next, size);
       CHECK(MPI_Send((char* )sendbuf + next_index * size, size, MPI_BYTE, next,
               SCATTER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "scatter: Error when scattering as root.\n");
@@ -42,12 +45,15 @@ int scatter(int root, int rank, int net_size, void* sendbuf, int size,
     int fw_cnt = root - rank > 0 ? root - rank - 1 : (net_size + root - rank
         - 1) % net_size;
 
+    pe_recv_message(pe, prev, SCATTER_TAG);
     MPI_Recv(recvbuf, recvcount, MPI_BYTE, prev, SCATTER_TAG, MPI_COMM_WORLD,
         MPI_STATUS_IGNORE);
     for (i = 0; i < fw_cnt; ++i) {
+      pe_send_message(pe, next, recvcount);
       CHECK(MPI_Send(recvbuf, recvcount, MPI_BYTE, next,
               SCATTER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "scatter: Error when forwarding scatter values.\n");
+      pe_recv_message(pe, prev, SCATTER_TAG);
       CHECK(MPI_Recv(recvbuf, recvcount, MPI_BYTE, prev,
               SCATTER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "scatter: Error when receiving scatter values.\n");
@@ -69,17 +75,20 @@ static inline int get_offset(int index, const int* const counts)
 }
 
 int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
-    void* recvbuf, int recvcount, int groupsize)
+    void* recvbuf, int recvcount, int groupsize, PE* pe)
 {
   int i;
   int next = (rank + 1) % net_size;
   char* tmp = NULL;
+
+  pe_start_scatterv(pe);
 
   if (root == rank) {
     for (i = net_size - 1; i >= 1; --i) {
       int next_index = (rank + i) % net_size;
       int next_offset = get_offset(next_index, sendcounts);
 
+      pe_send_message(pe, next, sendcounts[next_index]);
       CHECK(MPI_Send((char* )sendbuf + next_offset, sendcounts[next_index], MPI_BYTE, next,
               SCATTERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "scatterv: Error when scattering as root.\n");
@@ -92,6 +101,7 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
     int fw_cnt = root - rank > 0 ? root - rank - 1 : (net_size + root - rank
         - 1) % net_size;
 
+    pe_recv_message(pe, prev, SCATTERV_TAG);
     CHECK(MPI_Probe(prev, SCATTERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
         err, "scatterv: Error when calling MPI_Probe.\n");
     message_size = status._count;
@@ -102,10 +112,12 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
         MPI_STATUS_IGNORE) == MPI_SUCCESS,
         err, "scatterv: Error when receiving scatter values.\n");
     for (i = 0; i < fw_cnt; ++i) {
+      pe_send_message(pe, next, message_size);
       CHECK(MPI_Send(tmp, message_size, MPI_BYTE, next,
               SCATTERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "scatter: Error when forwarding scatter values.\n");
 
+      pe_recv_message(pe, prev, SCATTERV_TAG);
       CHECK(MPI_Probe(prev, SCATTERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "scatterv: Error when calling MPI_Probe.\n");
       message_size = status._count;
@@ -126,16 +138,19 @@ int scatterv(int root, int rank, int net_size, void* sendbuf, int* sendcounts,
 }
 
 int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int recvcount)
+    void* recvbuf, int recvcount, PE* pe)
 {
   int i;
   int prev = rank > 0 ? rank - 1 : net_size - 1;
   char* tmp = NULL;
 
+  pe_start_gather(pe);
+
   if (root == rank) {
     for (i = 1; i <= net_size - 1; ++i) {
       int next_index = (rank + net_size - i) % net_size;
 
+      pe_recv_message(pe, prev, GATHER_TAG);
       CHECK(MPI_Recv(recvbuf + next_index * recvcount, recvcount, MPI_BYTE, prev,
               GATHER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gather: Unable to receive gather messages as root.\n");
@@ -146,6 +161,7 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int fw_cnt = rank - root > 0 ? rank - root - 1 : (net_size + rank - root
         - 1) % net_size;
 
+    pe_send_message(pe, next, sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, next,
             GATHER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "gather: Unable to send gather message.\n");
@@ -153,9 +169,11 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
         err, "gather: Out of memory.\n");
 
     for (i = 0; i < fw_cnt; ++i) {
+      pe_recv_message(pe, prev, GATHER_TAG);
       CHECK(MPI_Recv(tmp, sendcount, MPI_BYTE, prev,
               GATHER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gather: Unable to receive message to forward.\n");
+      pe_send_message(pe, next, sendcount);
       CHECK(MPI_Send(tmp, sendcount, MPI_BYTE, next,
               GATHER_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "gather: Unable to forward message.\n");
@@ -169,16 +187,19 @@ int gather(int root, int rank, int net_size, void* sendbuf, int sendcount,
 }
 
 int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
-    void* recvbuf, int* recvcounts, int groupsize)
+    void* recvbuf, int* recvcounts, int groupsize, PE* pe)
 {
   int i;
   int prev = rank > 0 ? rank - 1 : net_size - 1;
   char* tmp = NULL;
 
+  pe_start_gatherv(pe);
+
   if (root == rank) {
     for (i = 1; i <= net_size - 1; ++i) {
       int next_index = (rank + net_size - i) % net_size;
 
+      pe_recv_message(pe, prev, GATHERV_TAG);
       CHECK(MPI_Recv(recvbuf + get_offset(next_index, recvcounts), recvcounts[next_index], MPI_BYTE, prev,
               GATHERV_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gather: Unable to receive gather messages as root.\n");
@@ -189,6 +210,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
     int fw_cnt = rank - root > 0 ? rank - root - 1 : (net_size + rank - root
         - 1) % net_size;
 
+    pe_send_message(pe, next, sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, next,
             GATHERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "gather: Unable to send gather message.\n");
@@ -197,6 +219,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
       int message_size;
       MPI_Status status;
 
+      pe_recv_message(pe, prev, GATHERV_TAG);
       CHECK(MPI_Probe(prev, GATHERV_TAG, MPI_COMM_WORLD, &status) == MPI_SUCCESS,
           err, "gatherv: Error when calling MPI_Probe.\n");
       message_size = status._count;
@@ -209,6 +232,7 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
               GATHERV_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "gatherv: Unable to receive message to forward.\n");
       /* Forward the message to the next node.*/
+      pe_send_message(pe, next, message_size);
       CHECK(MPI_Send(tmp, message_size, MPI_BYTE, next,
               GATHERV_TAG, MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "gatherv: Unable to forward message.\n");
@@ -222,11 +246,14 @@ int gatherv(int root, int rank, int net_size, void* sendbuf, int sendcount,
   return 1;
 }
 
-int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
+int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount, PE* pe)
 {
   int next = (rank + 1) % net_size;
 
+  pe_start_bcast(pe);
+
   if (root == rank) {
+    pe_send_message(pe, next, sendcount);
     CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, next, BCAST_TAG,
             MPI_COMM_WORLD) == MPI_SUCCESS,
         err, "broadcast: Error when initiating broadcast with MPI_Send as root.\n")
@@ -238,13 +265,16 @@ int broadcast(int root, int rank, int net_size, void* sendbuf, int sendcount)
     /* WARNING: same warning as above :P*/
     //if (rank == ((root - 1) % net_size)) {
     if ((root > 0 && rank == root - 1) || (root == 0 && rank == net_size - 1)) {
+      pe_recv_message(pe, prev, BCAST_TAG);
       CHECK(MPI_Recv(sendbuf, sendcount, MPI_BYTE, prev, BCAST_TAG,
               MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "broadcast: Error when receiving message from root.\n");
     } else {
+      pe_recv_message(pe, prev, BCAST_TAG);
       CHECK(MPI_Recv(sendbuf, sendcount, MPI_BYTE, prev, BCAST_TAG,
               MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS,
           err, "broadcast: Error when receiving message from root.\n");
+      pe_send_message(pe, next, sendcount);
       CHECK(MPI_Send(sendbuf, sendcount, MPI_BYTE, next, BCAST_TAG,
               MPI_COMM_WORLD) == MPI_SUCCESS,
           err, "broadcast: Error when initiating broadcast with MPI_Send as root.\n")
