@@ -58,37 +58,22 @@ struct worker_count
 
 void pe_start_bcast(PE* pe)
 {
-  assert(pe != NULL);
-  //fprintf(pe->log_file, "%s %d\n", BCAST_ID, pe->collective_op_cnt);
-  //++pe->collective_op_cnt;
 }
 
 void pe_start_scatter(PE* pe)
 {
-  assert(pe != NULL);
-  //fprintf(pe->log_file, "%s %d\n", SCATTER_ID, pe->collective_op_cnt);
-  //++pe->collective_op_cnt;
 }
 
 void pe_start_scatterv(PE* pe)
 {
-  assert(pe != NULL);
-  //fprintf(pe->log_file, "%s %d\n", SCATTERV_ID, pe->collective_op_cnt);
-  //++pe->collective_op_cnt;
 }
 
 void pe_start_gather(PE* pe)
 {
-  assert(pe != NULL);
-  //fprintf(pe->log_file, "%s %d\n", GATHER_ID, pe->collective_op_cnt);
-  //++pe->collective_op_cnt;
 }
 
 void pe_start_gatherv(PE* pe)
 {
-  assert(pe != NULL);
-  //fprintf(pe->log_file, "%s %d\n", GATHERV_ID, pe->collective_op_cnt);
-  //++pe->collective_op_cnt;
 }
 
 int pe_send_message(PE* pe, int dest, int message_size)

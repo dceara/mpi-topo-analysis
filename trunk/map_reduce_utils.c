@@ -45,7 +45,6 @@ static void sort_kw_mappings(MapKeyWorkerPairArray* a, int l,
 {
   int i;
 
-  assert(a != NULL);
   if (r <= l)
     return;
   i = partition_kw_mappings(a, l, r, compare);
@@ -56,7 +55,6 @@ static void sort_kw_mappings(MapKeyWorkerPairArray* a, int l,
 void sort_key_worker_mappings(MapKeyWorkerPairArray* a,
     map_key_compare_ptr compare)
 {
-  assert(a != NULL);
   if (a->size == 0)
     return;
   sort_kw_mappings(a, 0, a->size - 1, compare);
